@@ -113,4 +113,129 @@ def train(config) -> "lmforge.trainer.state.TrainState":
     Returns:
         Final TrainState after training completes.
     """
-    raise NotImplementedError("train() will be implemented in M5.")
+    import json
+    from pathlib import Path
+
+    import mlx.core as mx
+    import yaml
+
+    from lmforge.adapters.lora import apply_lora
+    from lmforge.adapters.targeting import get_patterns, resolve_targets
+    from lmforge.config import TrainingConfig
+    from lmforge.data.cache import check_cache, read_cache
+    from lmforge.manifest import write_manifest
+    from lmforge.models.loader import load_model
+    from lmforge.trainer.callbacks import ConsoleCallback, MetricsLoggerCallback
+    from lmforge.trainer.trainer import Trainer
+
+    # Load config if it's a path
+    if isinstance(config, str):
+        config = TrainingConfig.from_yaml(config)
+
+    print(f"LMForge v0 — Training")
+    print(f"Model: {config.model.path}")
+    print(f"Adapter: {config.adapter.method} (rank={config.adapter.rank})")
+    print()
+
+    # Create run directory
+    from lmforge.trainer.checkpoint import CheckpointManager
+    manager = CheckpointManager(config)
+    run_dir = manager.run_dir
+    run_dir.mkdir(parents=True, exist_ok=True)
+
+    print(f"Run directory: {run_dir}")
+    print()
+
+    # Write config.yaml
+    (run_dir / "config.yaml").write_text(yaml.dump(config.model_dump(), default_flow_style=False))
+
+    # Load model and tokenizer
+    print("Loading model and tokenizer...")
+    model, tokenizer = load_model(config.model.path, config.model.tokenizer_path, config.model.trust_remote_code)
+    print(f"Model loaded: {type(model).__name__}")
+    print()
+
+    # Apply LoRA adapters
+    print("Applying LoRA adapters...")
+    patterns = get_patterns(config.adapter)
+    targets = resolve_targets(model, patterns, config.adapter.num_layers)
+    print(f"Matched {len(targets)} modules")
+
+    apply_lora(model, targets, config.adapter)
+    trainable_params = sum(p.size for p in model.trainable_parameters().values())
+    total_params = sum(p.size for p in model.parameters().values())
+    print(f"Trainable parameters: {trainable_params:,} / {total_params:,} ({100 * trainable_params / total_params:.2f}%)")
+    print()
+
+    # Load or prepare training data
+    print("Loading training data...")
+    train_cache_meta = check_cache(config.data.train, config.model.path, config.data.cache_dir)
+    if train_cache_meta is None:
+        print(f"Cache miss for {config.data.train}. Running prepare...")
+        train_cache_meta = prepare(config.data.train, config.model.path, config.data.cache_dir)
+    else:
+        print(f"Cache hit: {train_cache_meta['num_samples']} samples, {train_cache_meta['total_tokens']} tokens")
+
+    train_dataset = read_cache(Path(config.data.cache_dir).expanduser() / train_cache_meta["fingerprint"])
+
+    # Load validation data
+    print("Loading validation data...")
+    val_cache_meta = check_cache(config.data.valid, config.model.path, config.data.cache_dir)
+    if val_cache_meta is None:
+        print(f"Cache miss for {config.data.valid}. Running prepare...")
+        val_cache_meta = prepare(config.data.valid, config.model.path, config.data.cache_dir)
+    else:
+        print(f"Cache hit: {val_cache_meta['num_samples']} samples, {val_cache_meta['total_tokens']} tokens")
+
+    val_dataset = read_cache(Path(config.data.cache_dir).expanduser() / val_cache_meta["fingerprint"])
+    print()
+
+    # Write manifest
+    print("Writing manifest...")
+    manifest = write_manifest(run_dir, config.model_dump(), train_cache_meta["fingerprint"])
+    print(f"Manifest written: {run_dir / 'manifest.json'}")
+    print()
+
+    # Create callbacks
+    callbacks = [
+        ConsoleCallback(num_iters=config.training.num_iters),
+        MetricsLoggerCallback(log_path=run_dir / "logs" / "metrics.jsonl"),
+    ]
+
+    # Add WandB callback if configured
+    if config.training.wandb_project:
+        try:
+            from lmforge.trainer.callbacks import WandBCallback
+            callbacks.append(
+                WandBCallback(
+                    project=config.training.wandb_project,
+                    run_name=run_dir.name,
+                    config=config.model_dump(),
+                )
+            )
+            print("WandB logging enabled")
+        except ImportError:
+            print("Warning: wandb not installed, skipping WandB logging")
+
+    # Create trainer
+    trainer = Trainer(
+        model=model,
+        config=config,
+        train_dataset=train_dataset,
+        val_dataset=val_dataset,
+        callbacks=callbacks,
+    )
+
+    # Run training
+    print("Starting training...")
+    print()
+    final_state = trainer.fit()
+
+    print()
+    print("Training complete!")
+    print(f"Final step: {final_state.step}")
+    print(f"Best validation loss: {final_state.best_val_loss:.4f}")
+    print(f"Total tokens trained: {final_state.trained_tokens:,}")
+    print(f"Checkpoints saved to: {run_dir / 'checkpoints'}")
+
+    return final_state

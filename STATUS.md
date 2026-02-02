@@ -11,8 +11,9 @@
 **M2: Data Pipeline ✅ COMPLETE**
 **M3: Model + Adapters ✅ COMPLETE**
 **M4: Trainer Infrastructure ✅ COMPLETE**
+**M5: Trainer + Run Management ✅ COMPLETE**
 
-Full trainer infrastructure with optimizer factory, checkpoint management, callbacks, and metrics logging. 45 passing tests (14 M1 + 14 M2 + 10 M3 + 7 M4).
+Full end-to-end training system with compiled training loop, run orchestration, and manifest generation. 45 passing tests (14 M1 + 14 M2 + 10 M3 + 7 M4), ready for integration testing.
 
 ---
 
@@ -268,9 +269,60 @@ python -c "from lmforge.config import TrainingConfig; c = TrainingConfig.from_ya
 
 ---
 
-## What's Next: M5 — Trainer + Run Management
+## What's Been Accomplished in M5
 
-**Target**: Implement the full training loop and run orchestration.
+### Trainer + Run Management
+
+✅ **Trainer Class** (`trainer/trainer.py`):
+- `Trainer.__init__()` — initializes with model, config, datasets, callbacks, optimizer, checkpoint manager
+- `loss_fn()` — cross-entropy loss with prompt masking per V0_DESIGN_FREEZE.md §2.2
+- `loss_value_and_grad()` — computes loss and gradients
+- `clip_grad_norm()` — gradient clipping by global norm
+- Compiled step function with gradient accumulation support
+- `fit()` — full training loop with:
+  - Metal memory limit configuration
+  - Callback boundaries (on_train_begin, on_step_end, on_eval_end, on_save, on_train_end)
+  - Evaluation at step 1, every steps_per_eval, and final step
+  - Metrics reporting every steps_per_report
+  - Checkpoint saves every steps_per_save and at final step
+  - Cooperative pause support (optional feature)
+  - Safe points with mx.eval() for callback execution
+- `evaluate()` — validation loop that computes average loss over validation set
+
+✅ **Manifest & Environment** (`manifest.py`):
+- `collect_environment()` — collects Python version, MLX version, lmforge version, platform, OS, chip, memory, GPU cores
+- `write_manifest()` — writes manifest.json and environment.json to run directory
+- HardwareInfo collection via mx.metal.device_info() on Apple Silicon
+- ISO 8601 timestamps with Z suffix
+
+✅ **Top-level train() Function** (`__init__.py`):
+- Config loading from YAML or TrainingConfig object
+- Run directory creation with unique run ID
+- config.yaml writing to run directory
+- Model and tokenizer loading
+- LoRA adapter application with progress reporting
+- Automatic data preparation (cache hit/miss detection)
+- Training and validation dataset loading
+- Manifest and environment.json generation
+- Callback creation (Console, MetricsLogger, optional WandB)
+- Trainer initialization and execution
+- Final summary with best val loss and checkpoint location
+
+✅ **CLI Command** (`cli/train_cmd.py`):
+- Already complete from M0 — delegates to train() function
+
+### Files Modified (M5)
+
+- `lmforge/trainer/trainer.py` — 258 lines (full Trainer implementation)
+- `lmforge/manifest.py` — 140 lines (environment collection + manifest writing)
+- `lmforge/__init__.py` — 225 lines (train() function)
+- `lmforge/cli/train_cmd.py` — 12 lines (already complete)
+
+---
+
+## What's Next: M6 — Integration Testing
+
+**Target**: End-to-end integration tests and final verification.
 
 ### Deliverables
 
@@ -326,8 +378,8 @@ python -c "from lmforge.config import TrainingConfig; c = TrainingConfig.from_ya
 | **M2: Data Pipeline** | ✅ **COMPLETE** | 14 tests passing, `lmforge prepare` working |
 | **M3: Model + Adapters** | ✅ **COMPLETE** | 10 tests passing, LoRA + targeting complete |
 | **M4: Trainer Infra** | ✅ **COMPLETE** | 7 tests passing, optimizer, checkpoints, callbacks, metrics |
-| **M5: Trainer + Run** | 🎯 **NEXT** | Full training loop, run management, manifest |
-| **M6: Integration** | ⏸️ Pending | End-to-end tests, resume validation |
+| **M5: Trainer + Run** | ✅ **COMPLETE** | Full training loop, run management, manifest generation |
+| **M6: Integration** | 🎯 **NEXT** | End-to-end tests, resume validation |
 
 ---
 
