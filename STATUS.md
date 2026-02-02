@@ -9,8 +9,9 @@
 **M0: Scaffolding ✅ COMPLETE**
 **M1: Config System ✅ COMPLETE**
 **M2: Data Pipeline ✅ COMPLETE**
+**M3: Model + Adapters ✅ COMPLETE**
 
-Full data preprocessing pipeline with 28 passing tests (14 M1 + 14 M2).
+Full model loading + LoRA adapter system with 38 passing tests (14 M1 + 14 M2 + 10 M3).
 
 ---
 
@@ -85,7 +86,7 @@ Full data preprocessing pipeline with 28 passing tests (14 M1 + 14 M2).
   - Adapter: `preset: attention-qv`, rank 8
   - Training: 1000 iters, batch size 4, Adam optimizer
 
-### 5. Tests (7 Files, 28 Passing + 16 Pending)
+### 5. Tests (7 Files, 38 Passing + 10 Pending)
 
 - ✅ `conftest.py` — Fixtures for `tmp_dir` and `sample_config_dict`
 - ✅ **`test_config.py` — 14 TESTS PASSING (M1 COMPLETE)**
@@ -106,7 +107,14 @@ Full data preprocessing pipeline with 28 passing tests (14 M1 + 14 M2).
   - Cache hit detection
   - Batching with correct shapes (B, T) and (B, 2)
   - Padding to multiple of 32
-- ⏸️ `test_adapters.py` — 6 tests for M3 (all skip)
+- ✅ **`test_adapters.py` — 10 TESTS PASSING (M3 COMPLETE)**
+  - Preset resolution (attention-qv, attention-all, mlp, all-linear)
+  - Glob pattern matching with fnmatch
+  - num_layers filtering for last N layers
+  - LoRALinear.from_base() and fuse()
+  - LoRAEmbedding.from_base() and fuse()
+  - apply_lora() integration
+  - named_modules() recursive enumeration
 - ⏸️ `test_trainer_infra.py` — 7 tests for M4 (all skip)
 - ⏸️ `test_integration.py` — 3 tests for M6 (all skip)
 
@@ -125,7 +133,7 @@ lmforge prepare --help   # ✅ Shows prepare options
 lmforge train --help     # ✅ Shows train options
 
 # Tests
-pytest tests/ -v         # ✅ 28 passed, 16 skipped
+pytest tests/ -v         # ✅ 38 passed, 10 skipped
 
 # Config loading
 python -c "from lmforge.config import TrainingConfig; c = TrainingConfig.from_yaml('examples/train.yaml')"  # ✅ OK
@@ -177,7 +185,42 @@ python -c "from lmforge.config import TrainingConfig; c = TrainingConfig.from_ya
 
 ---
 
-## What's Next: M3 — Model Loading + Adapters
+## What's Been Accomplished in M3
+
+### Model Loading + LoRA Adapters
+
+✅ **Model Loader** (`models/loader.py`):
+- `load_model()` — loads model + tokenizer via mlx_lm
+- Optional mlx_lm dependency (clear error if not installed)
+- Trust remote code support
+
+✅ **Adapter Targeting** (`adapters/targeting.py`):
+- `named_modules()` — recursive module enumeration for MLX models
+- `get_patterns()` — resolve config.targets or config.preset
+- `resolve_targets()` — glob matching with fnmatch.fnmatch()
+- `num_layers` filtering for last N transformer layers
+- PRESETS: attention-qv, attention-all, mlp, all-linear
+- Clear error messages with available module paths
+
+✅ **LoRA Implementation** (`adapters/lora.py`):
+- `LoRALinear` class with proper initialization (Kaiming for A, zeros for B)
+- `LoRAEmbedding` class for embedding table adaptation
+- `from_base()` classmethod for creating from existing layers
+- `fuse()` method to merge LoRA weights back: W' = W + (scale/r) * B @ A
+- `apply_lora()` to apply adapters in-place with tree_unflatten
+- Dropout support, base layer freezing
+- Trainable parameter counting + logging
+
+### Files Modified (M3)
+
+- `lmforge/models/loader.py` — 41 lines (model loading with mlx_lm)
+- `lmforge/adapters/targeting.py` — 152 lines (glob matching + layer filtering)
+- `lmforge/adapters/lora.py` — 277 lines (LoRA adapters)
+- `tests/test_adapters.py` — 201 lines (10 comprehensive tests)
+
+---
+
+## What's Next: M4 — Trainer Infrastructure
 
 **Target**: Implement data preprocessing, caching, and batching.
 
@@ -233,8 +276,8 @@ python -c "from lmforge.config import TrainingConfig; c = TrainingConfig.from_ya
 | **M0: Scaffolding** | ✅ **COMPLETE** | 39 files, package installable, all verifications pass |
 | **M1: Config System** | ✅ **COMPLETE** | 14 tests passing, all validators working |
 | **M2: Data Pipeline** | ✅ **COMPLETE** | 14 tests passing, `lmforge prepare` working |
-| **M3: Model + Adapters** | 🎯 **NEXT** | Model loading, glob targeting, LoRA implementation |
-| **M4: Trainer Infra** | ⏸️ Pending | Optimizer, checkpoints, callbacks, metrics |
+| **M3: Model + Adapters** | ✅ **COMPLETE** | 10 tests passing, LoRA + targeting complete |
+| **M4: Trainer Infra** | 🎯 **NEXT** | Optimizer, checkpoints, callbacks, metrics |
 | **M5: Trainer + Run** | ⏸️ Pending | Full training loop, run management, manifest |
 | **M6: Integration** | ⏸️ Pending | End-to-end tests, resume validation |
 
