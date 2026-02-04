@@ -1,0 +1,4 @@
+{"messages": [{"role": "user", "content": "Hello"}, {"role": "assistant", "content": "Hi there!"}]}
+{"messages": [{"role": "user", "content": "How are you?"}, {"role": "assistant", "content": "I'm doing well, thanks for asking!"}]}
+{"messages": [{"role": "user", "content": "What's your name?"}, {"role": "assistant", "content": "I'm an AI assistant."}]}
+{"messages": [{"role": "user", "content": "Tell me a joke"}, {"role": "assistant", "content": "Why did the programmer quit his job? Because he didn't get arrays!"}]}

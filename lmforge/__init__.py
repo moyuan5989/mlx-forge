@@ -201,33 +201,66 @@ def train(config) -> "lmforge.trainer.state.TrainState":
     print(f"Matched {len(targets)} modules")
 
     apply_lora(model, targets, config.adapter)
-    trainable_params = sum(p.size for p in model.trainable_parameters().values())
-    total_params = sum(p.size for p in model.parameters().values())
+
+    # Count parameters using tree_flatten for nested dicts
+    from mlx.utils import tree_flatten
+    trainable_params = sum(p.size for _, p in tree_flatten(model.trainable_parameters()))
+    total_params = sum(p.size for _, p in tree_flatten(model.parameters()))
     print(f"Trainable parameters: {trainable_params:,} / {total_params:,} ({100 * trainable_params / total_params:.2f}%)")
     print()
 
     # Load or prepare training data (use resolved tokenizer path)
     print("Loading training data...")
     tokenizer_for_data = tokenizer_path if tokenizer_path else resolved_model.local_path
-    train_cache_meta = check_cache(config.data.train, tokenizer_for_data, config.data.cache_dir)
-    if train_cache_meta is None:
-        print(f"Cache miss for {config.data.train}. Running prepare...")
-        train_cache_meta = prepare(config.data.train, tokenizer_for_data, config.data.cache_dir)
-    else:
-        print(f"Cache hit: {train_cache_meta['num_samples']} samples, {train_cache_meta['total_tokens']} tokens")
 
-    train_dataset = read_cache(Path(config.data.cache_dir).expanduser() / train_cache_meta["fingerprint"])
+    # Compute fingerprint and check cache
+    from lmforge.data.cache import compute_fingerprint
+    train_fingerprint = compute_fingerprint(config.data.train, tokenizer)
+    cache_dir = Path(config.data.cache_dir).expanduser()
+
+    if check_cache(config.data.cache_dir, train_fingerprint):
+        print(f"Cache hit: {train_fingerprint}")
+        meta_path = cache_dir / train_fingerprint / "meta.json"
+        with open(meta_path) as f:
+            train_cache_meta = json.load(f)
+        print(f"  {train_cache_meta['num_samples']} samples, {train_cache_meta['total_tokens']} tokens")
+    else:
+        print(f"Cache miss for {config.data.train}. Running prepare...")
+        train_cache_meta = prepare(
+            config.data.train,
+            tokenizer_for_data,
+            config.data.cache_dir,
+            trust_remote_code=config.model.trust_remote_code,
+            max_seq_length=config.data.max_seq_length,
+            mask_prompt=config.data.mask_prompt,
+        )
+        # train_fingerprint already computed above
+
+    train_dataset = read_cache(config.data.cache_dir, train_fingerprint)
 
     # Load validation data
     print("Loading validation data...")
-    val_cache_meta = check_cache(config.data.valid, tokenizer_for_data, config.data.cache_dir)
-    if val_cache_meta is None:
-        print(f"Cache miss for {config.data.valid}. Running prepare...")
-        val_cache_meta = prepare(config.data.valid, tokenizer_for_data, config.data.cache_dir)
-    else:
-        print(f"Cache hit: {val_cache_meta['num_samples']} samples, {val_cache_meta['total_tokens']} tokens")
+    val_fingerprint = compute_fingerprint(config.data.valid, tokenizer)
 
-    val_dataset = read_cache(Path(config.data.cache_dir).expanduser() / val_cache_meta["fingerprint"])
+    if check_cache(config.data.cache_dir, val_fingerprint):
+        print(f"Cache hit: {val_fingerprint}")
+        meta_path = cache_dir / val_fingerprint / "meta.json"
+        with open(meta_path) as f:
+            val_cache_meta = json.load(f)
+        print(f"  {val_cache_meta['num_samples']} samples, {val_cache_meta['total_tokens']} tokens")
+    else:
+        print(f"Cache miss for {config.data.valid}. Running prepare...")
+        val_cache_meta = prepare(
+            config.data.valid,
+            tokenizer_for_data,
+            config.data.cache_dir,
+            trust_remote_code=config.model.trust_remote_code,
+            max_seq_length=config.data.max_seq_length,
+            mask_prompt=config.data.mask_prompt,
+        )
+        # val_fingerprint already computed above
+
+    val_dataset = read_cache(config.data.cache_dir, val_fingerprint)
     print()
 
     # Write manifest
@@ -235,7 +268,7 @@ def train(config) -> "lmforge.trainer.state.TrainState":
     manifest = write_manifest(
         run_dir,
         config.model_dump(),
-        train_cache_meta["fingerprint"],
+        train_fingerprint,
         resolved_model.resolution_metadata,
     )
     print(f"Manifest written: {run_dir / 'manifest.json'}")
@@ -248,7 +281,7 @@ def train(config) -> "lmforge.trainer.state.TrainState":
     ]
 
     # Add WandB callback if configured
-    if config.training.wandb_project:
+    if hasattr(config.training, 'wandb_project') and config.training.wandb_project:
         try:
             from lmforge.trainer.callbacks import WandBCallback
             callbacks.append(

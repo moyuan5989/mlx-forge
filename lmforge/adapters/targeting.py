@@ -55,17 +55,28 @@ def named_modules(module, prefix: str = ""):
     """Yield (name, module) pairs for all submodules recursively.
 
     For MLX nn.Module, we use the children() method which returns a dict
-    of child modules.
+    of child modules. Lists are traversed with numeric indices.
+
+    Produces paths like:
+        - model.layers.0.self_attn.q_proj
+        - model.layers.0.mlp.gate_proj
+        - model.embed_tokens
     """
     yield prefix, module
 
-    # MLX modules have a children() method that returns {name: child_module}
+    # MLX modules have a children() method that returns {name: child_module_or_list}
     if hasattr(module, "children"):
         children = module.children()
         if isinstance(children, dict):
             for name, child in children.items():
                 full_name = f"{prefix}.{name}" if prefix else name
-                yield from named_modules(child, full_name)
+                # Handle lists of modules (e.g., transformer layers)
+                if isinstance(child, list):
+                    for idx, item in enumerate(child):
+                        item_name = f"{full_name}.{idx}"
+                        yield from named_modules(item, item_name)
+                else:
+                    yield from named_modules(child, full_name)
 
 
 def resolve_targets(

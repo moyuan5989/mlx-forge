@@ -965,3 +965,105 @@ M7 does **not** modify any v0 frozen contracts:
 ### Design Document
 
 See `M7_HF_MODEL_LOADING_DESIGN.md` for the complete design specification.
+
+---
+
+## 14. M8: Self-Contained Model Loading
+
+M8 removes the `mlx-lm` dependency and makes LMForge fully self-contained for model loading.
+
+### Why Remove mlx-lm
+
+1. **Demo library, not production-grade**: Apple built it as examples/tutorials
+2. **Unstable API**: No semver guarantees, breaks between releases
+3. **Overkill**: We only need ~5% of its functionality (model loading, not generation)
+4. **Dependency risk**: Adds uncertainty to LMForge's stability
+
+### Implementation
+
+Model loading is now self-contained in `lmforge/models/`:
+
+```
+lmforge/models/
+├── resolve.py              # M7 - HF resolution (unchanged)
+├── loader.py               # Self-contained loading (no mlx-lm)
+├── registry.py             # Explicit model allowlist
+├── _base/                  # Shared utilities
+│   ├── args.py             # BaseModelArgs with from_dict()
+│   ├── attention.py        # create_attention_mask(), scaled_dot_product_attention()
+│   ├── rope.py             # RoPE variants (standard, Llama3, SuScaled, Yarn)
+│   └── activations.py      # swiglu()
+└── architectures/          # Model implementations
+    ├── llama.py            # Llama, Mistral (via remap)
+    └── qwen3.py            # Qwen3 family
+```
+
+### Registry Pattern
+
+Uses an explicit allowlist instead of dynamic import:
+
+```python
+SUPPORTED_ARCHITECTURES = {
+    "llama": "lmforge.models.architectures.llama",
+    "qwen3": "lmforge.models.architectures.qwen3",
+}
+
+MODEL_REMAPPING = {
+    "mistral": "llama",  # Mistral uses Llama architecture
+}
+```
+
+### Load Flow
+
+```python
+def load_model(model_path, tokenizer_path=None, trust_remote_code=False):
+    # 1. Load tokenizer via transformers
+    tokenizer = AutoTokenizer.from_pretrained(tok_path)
+
+    # 2. Load config.json
+    config = load_config(model_path)
+
+    # 3. Resolve model class via registry
+    Model, ModelArgs = get_model_classes(config)
+
+    # 4. Instantiate model
+    model = Model(ModelArgs.from_dict(config))
+
+    # 5. Load weights from safetensors
+    weights = load_weights(model_path)
+
+    # 6. Sanitize and load
+    if hasattr(model, "sanitize"):
+        weights = model.sanitize(weights)
+    model.load_weights(list(weights.items()))
+
+    return model, tokenizer
+```
+
+### Supported Architectures
+
+**Tier 1 (Day One)**:
+- `llama` - Llama 2/3 family
+- `mistral` - Remaps to llama
+- `qwen3` - Qwen3-0.6B, 1.7B, 4B, 8B
+
+### Error Messages
+
+```
+ValueError: Model type 'deepseek_v3' is not supported.
+
+Supported architectures: llama, qwen3
+
+If you need this architecture, please open an issue.
+```
+
+### What M8 Does NOT Support
+
+- **Quantized models** (AWQ, GPTQ, bitnet) - Training uses full precision
+- **KV cache** - Not needed for training
+- **Generation/sampling** - Training only
+- **MoE models** (DeepSeek V3, Mixtral) - Can be added if needed
+
+### Design Document
+
+See `M8_SELF_CONTAINED_MODEL_LOADING_DESIGN.md` for the complete design specification.

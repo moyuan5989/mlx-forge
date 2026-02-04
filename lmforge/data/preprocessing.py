@@ -47,11 +47,19 @@ def _tokenize_chat(
     messages = sample["messages"]
 
     # Apply chat template to full conversation
-    tokens = tokenizer.apply_chat_template(
+    result = tokenizer.apply_chat_template(
         messages,
         tokenize=True,
         add_generation_prompt=False,
     )
+    # Extract input_ids if it's a BatchEncoding, otherwise use directly
+    if hasattr(result, 'input_ids'):
+        tokens = result.input_ids
+    elif hasattr(result, '__getitem__') and hasattr(result[0], 'ids'):
+        # Handle Encoding list
+        tokens = result[0].ids
+    else:
+        tokens = result
 
     # Truncate if needed
     if len(tokens) > max_seq_length:
@@ -62,11 +70,18 @@ def _tokenize_chat(
         # Re-encode without the last message to find where assistant response starts
         prompt_messages = messages[:-1]
         try:
-            prompt_tokens = tokenizer.apply_chat_template(
+            prompt_result = tokenizer.apply_chat_template(
                 prompt_messages,
                 tokenize=True,
                 add_generation_prompt=True,  # This adds the assistant prompt
             )
+            # Extract input_ids if it's a BatchEncoding
+            if hasattr(prompt_result, 'input_ids'):
+                prompt_tokens = prompt_result.input_ids
+            elif hasattr(prompt_result, '__getitem__') and hasattr(prompt_result[0], 'ids'):
+                prompt_tokens = prompt_result[0].ids
+            else:
+                prompt_tokens = prompt_result
             offset = len(prompt_tokens)
         except Exception:
             # If re-encoding fails, fall back to offset=0 (compute loss on all tokens)

@@ -65,7 +65,8 @@ class LoRALinear(nn.Module):
         # Get dimensions from base linear
         if isinstance(base_linear, nn.Linear):
             out_features, in_features = base_linear.weight.shape
-            bias = base_linear.bias is not None
+            # MLX Linear without bias doesn't have a bias attribute at all
+            bias = hasattr(base_linear, "bias") and base_linear.bias is not None
         elif hasattr(base_linear, "weight"):
             # QuantizedLinear or other linear-like module
             out_features, in_features = base_linear.weight.shape
@@ -267,9 +268,10 @@ def apply_lora(model, targets: list[tuple[str, object]], config) -> object:
     if len(lora_layers) > 10:
         print(f"  ... and {len(lora_layers) - 10} more")
 
-    # Count trainable parameters
+    # Count trainable parameters using tree_flatten
+    from mlx.utils import tree_flatten
     trainable_params = sum(
-        p.size for p in model.trainable_parameters().values()
+        p.size for _, p in tree_flatten(model.trainable_parameters())
     )
     print(f"Trainable parameters: {trainable_params:,}")
 
