@@ -61,15 +61,15 @@ data:
 training:
   batch_size: 4
   num_iters: 10000
-  learning_rate: 3e-4
+  learning_rate: 0.0003
   optimizer: adamw
   optimizer_config:
     weight_decay: 0.01
   lr_schedule:
     name: cosine_decay
-    arguments: [3e-4, 10000, 1e-6]  # [init, decay_steps, end]
+    arguments: [0.0003, 10000, 0.000001]  # [init, decay_steps, end]
     warmup: 100
-    warmup_init: 1e-6
+    warmup_init: 0.000001
   grad_accumulation_steps: 4
   max_grad_norm: 1.0
   seed: 42
@@ -93,30 +93,30 @@ runtime:
   # Cosine annealing (recommended)
   lr_schedule:
     name: cosine_decay
-    arguments: [3e-4, 10000, 1e-6]  # [init, decay_steps, end]
+    arguments: [0.0003, 10000, 0.000001]  # [init, decay_steps, end]
     warmup: 100
-    warmup_init: 1e-6
+    warmup_init: 0.000001
 
   # Linear decay
   lr_schedule:
     name: linear_schedule
-    arguments: [3e-4, 1e-6, 10000]  # [init, end, steps]
+    arguments: [0.0003, 0.000001, 10000]  # [init, end, steps]
     warmup: 100
-    warmup_init: 1e-6
+    warmup_init: 0.000001
 
   # Step decay (drop by 0.5 every 2000 steps)
   lr_schedule:
     name: step_decay
-    arguments: [3e-4, 0.5, 2000]  # [init, decay_rate, decay_steps]
+    arguments: [0.0003, 0.5, 2000]  # [init, decay_rate, decay_steps]
     warmup: 100
-    warmup_init: 1e-6
+    warmup_init: 0.000001
 
   # Exponential decay
   lr_schedule:
     name: exponential_decay
-    arguments: [3e-4, 0.95]  # [init, decay_rate]
+    arguments: [0.0003, 0.95]  # [init, decay_rate]
     warmup: 100
-    warmup_init: 1e-6
+    warmup_init: 0.000001
   ```
 
 ## Step 3: Prepare (Optional but Recommended)

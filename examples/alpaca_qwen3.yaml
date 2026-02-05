@@ -26,15 +26,15 @@ data:
 training:
   batch_size: 4
   num_iters: 10000
-  learning_rate: 3e-4
+  learning_rate: 0.0003
   optimizer: adamw
   optimizer_config:
     weight_decay: 0.01
   lr_schedule:
     name: cosine_decay
-    arguments: [3e-4, 10000, 1e-6]  # [init, decay_steps, end]
+    arguments: [0.0003, 10000, 0.000001]  # [init, decay_steps, end]
     warmup: 100
-    warmup_init: 1e-6
+    warmup_init: 0.000001
   grad_accumulation_steps: 4
   max_grad_norm: 1.0
   seed: 42
