@@ -9,7 +9,7 @@ from threading import Event
 
 import mlx.core as mx
 import mlx.nn as nn
-from mlx.utils import tree_map
+from mlx.utils import tree_flatten, tree_map
 
 from lmforge.data.batching import iterate_batches
 from lmforge.trainer.callbacks import CallbackList
@@ -52,8 +52,8 @@ def loss_value_and_grad(model, batch, lengths):
 
 def clip_grad_norm(grads, max_norm: float):
     """Clip gradients by global norm."""
-    # Compute global norm
-    grad_norm = mx.sqrt(sum((g * g).sum() for g in tree_map(lambda x: x, grads)))
+    # Compute global norm using tree_flatten to iterate over leaf values
+    grad_norm = mx.sqrt(sum((g * g).sum() for _, g in tree_flatten(grads)))
 
     # Clip if needed
     scale = max_norm / (grad_norm + 1e-6)
@@ -93,7 +93,7 @@ class Trainer:
         if mx.metal.is_available():
             device_info = mx.metal.device_info()
             if "max_recommended_working_set_size" in device_info:
-                mx.metal.set_wired_limit(device_info["max_recommended_working_set_size"])
+                mx.set_wired_limit(device_info["max_recommended_working_set_size"])
 
         # Seed RNG
         mx.random.seed(self.config.training.seed)
