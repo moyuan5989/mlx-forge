@@ -20,6 +20,25 @@ class LRScheduleConfig(BaseModel):
     warmup_init: float = 0.0
 
 
+class QuantizationConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    bits: int = 4
+    group_size: int = 64
+
+    @model_validator(mode="after")
+    def validate_bits(self) -> QuantizationConfig:
+        if self.bits not in (4, 8):
+            raise ValueError(
+                f"Quantization bits must be 4 or 8, got {self.bits}."
+            )
+        if self.group_size not in (32, 64, 128):
+            raise ValueError(
+                f"Quantization group_size must be 32, 64, or 128, got {self.group_size}."
+            )
+        return self
+
+
 class ModelConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -27,6 +46,7 @@ class ModelConfig(BaseModel):
     tokenizer_path: Optional[str] = None
     trust_remote_code: bool = False
     revision: Optional[str] = None  # HF revision/commit hash (None = latest)
+    quantization: Optional[QuantizationConfig] = None
 
 
 class AdapterConfig(BaseModel):
@@ -61,6 +81,7 @@ class DataConfig(BaseModel):
     cache_dir: str = "~/.lmforge/cache/preprocessed"
     max_seq_length: int = 2048
     mask_prompt: bool = True
+    packing: bool = False
 
 
 class TrainingParams(BaseModel):
@@ -76,6 +97,7 @@ class TrainingParams(BaseModel):
     max_grad_norm: Optional[float] = None
     seed: int = 42
 
+    gradient_checkpointing: bool = False
     steps_per_report: int = 10
     steps_per_eval: int = 200
     steps_per_save: int = 100

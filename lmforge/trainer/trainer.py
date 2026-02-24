@@ -11,7 +11,7 @@ import mlx.core as mx
 import mlx.nn as nn
 from mlx.utils import tree_flatten, tree_map
 
-from lmforge.data.batching import iterate_batches
+from lmforge.data.batching import iterate_batches, iterate_packed_batches
 from lmforge.trainer.callbacks import CallbackList
 from lmforge.trainer.checkpoint import CheckpointManager
 from lmforge.trainer.optimizer import build_optimizer
@@ -45,9 +45,67 @@ def loss_fn(model, batch, lengths):
     return ce.sum() / ntoks, ntoks
 
 
+def loss_fn_packed(model, batch, segment_ids, offsets):
+    """Compute cross-entropy loss for packed sequences.
+
+    Loss is computed only on completion tokens within each segment,
+    respecting segment boundaries so no cross-sequence loss leaks.
+
+    Args:
+        model: The model to evaluate
+        batch: Token IDs array of shape (B, T)
+        segment_ids: Segment membership per token, shape (B, T). -1 = padding
+        offsets: Per-segment (prompt_end, seq_end), shape (B, max_segments, 2)
+    """
+    inputs = batch[:, :-1]
+    targets = batch[:, 1:]
+    seg_in = segment_ids[:, :-1]
+    seg_out = segment_ids[:, 1:]
+    logits = model(inputs)
+
+    # Loss only where consecutive tokens are same segment AND not padding
+    same_seg = (seg_in == seg_out) & (seg_out >= 0)
+
+    # Build prompt mask: for each position, check if it's past the prompt
+    # offset for its segment. We build this from the offsets array.
+    B, T_out = targets.shape
+    positions = mx.broadcast_to(mx.arange(T_out)[None, :], (B, T_out))
+    # For each position, get the prompt_end of its segment
+    # seg_out contains the segment id; we look up offsets[b, seg_id, 0]
+    # To avoid fancy indexing issues in MLX, compute per-segment masks
+    n_segs = offsets.shape[1]
+    past_prompt = mx.zeros((B, T_out), dtype=mx.bool_)
+    for s in range(n_segs):
+        seg_mask = (seg_out == s)
+        prompt_end = offsets[:, s, 0:1]  # (B, 1)
+        # Position is 0-indexed in the packed row; prompt_end is absolute position
+        # We need: position+1 >= prompt_end (since targets are shifted by 1)
+        past = (positions + 1) >= prompt_end
+        past_prompt = past_prompt | (seg_mask & past)
+
+    mask = same_seg & past_prompt
+
+    ce = nn.losses.cross_entropy(logits, targets, reduction="none") * mask
+    ntoks = mask.sum()
+
+    return ce.sum() / ntoks, ntoks
+
+
 def loss_value_and_grad(model, batch, lengths):
-    """Compute loss and gradients."""
-    return mx.value_and_grad(loss_fn)(model, batch, lengths)
+    """Compute loss and gradients.
+
+    Uses nn.value_and_grad to only compute gradients for trainable parameters,
+    which is required for QLoRA (avoids QuantizedMatmul VJP errors).
+    """
+    return nn.value_and_grad(model, loss_fn)(model, batch, lengths)
+
+
+def loss_value_and_grad_packed(model, batch, segment_ids, offsets):
+    """Compute loss and gradients for packed sequences.
+
+    Uses nn.value_and_grad to only compute gradients for trainable parameters.
+    """
+    return nn.value_and_grad(model, loss_fn_packed)(model, batch, segment_ids, offsets)
 
 
 def clip_grad_norm(grads, max_norm: float):
@@ -65,7 +123,8 @@ def clip_grad_norm(grads, max_norm: float):
 class Trainer:
     """Runs LoRA SFT training with compiled step, callbacks, and checkpointing."""
 
-    def __init__(self, model, config, train_dataset, val_dataset, callbacks=None):
+    def __init__(self, model, config, train_dataset, val_dataset,
+                 callbacks=None, state=None, checkpoint_manager=None):
         self.model = model
         self.config = config
         self.train_dataset = train_dataset
@@ -73,9 +132,9 @@ class Trainer:
         self.callbacks = CallbackList(callbacks or [])
 
         self.optimizer = build_optimizer(config.training, model)
-        self.checkpoint_manager = CheckpointManager(config)
+        self.checkpoint_manager = checkpoint_manager or CheckpointManager(config)
 
-        self.state = TrainState(
+        self.state = state or TrainState(
             step=0,
             epoch=0,
             trained_tokens=0,
@@ -104,46 +163,47 @@ class Trainer:
         # Build compiled step function
         grad_accum_steps = self.config.training.grad_accumulation_steps
         max_grad_norm = self.config.training.max_grad_norm
+        use_packing = self.config.data.packing
 
         # compile_state tracks the mutable state for mx.compile
         compile_state = [self.model.state, self.optimizer.state, mx.random.state]
+
+        def _apply_grad_update(grad, prev_grad, do_update):
+            """Shared gradient accumulation and update logic."""
+            if prev_grad is not None:
+                grad = tree_map(lambda a, b: a + b, grad, prev_grad)
+            if do_update:
+                if grad_accum_steps > 1:
+                    grad = tree_map(lambda g: g / grad_accum_steps, grad)
+                if max_grad_norm is not None:
+                    grad = clip_grad_norm(grad, max_grad_norm)
+                self.optimizer.update(self.model, grad)
+                grad = None
+            return grad
 
         if not self.config.runtime.eager:
             @partial(mx.compile, inputs=compile_state, outputs=compile_state)
             def step(batch, lengths, prev_grad, do_update):
                 (loss, ntoks), grad = loss_value_and_grad(self.model, batch, lengths)
+                grad = _apply_grad_update(grad, prev_grad, do_update)
+                return loss, ntoks, grad
 
-                # Accumulate gradients
-                if prev_grad is not None:
-                    grad = tree_map(lambda a, b: a + b, grad, prev_grad)
-
-                # Update if this is an update step
-                if do_update:
-                    if grad_accum_steps > 1:
-                        grad = tree_map(lambda g: g / grad_accum_steps, grad)
-                    if max_grad_norm is not None:
-                        grad = clip_grad_norm(grad, max_grad_norm)
-                    self.optimizer.update(self.model, grad)
-                    grad = None
-
+            @partial(mx.compile, inputs=compile_state, outputs=compile_state)
+            def step_packed(batch, segment_ids, offsets, prev_grad, do_update):
+                (loss, ntoks), grad = loss_value_and_grad_packed(
+                    self.model, batch, segment_ids, offsets)
+                grad = _apply_grad_update(grad, prev_grad, do_update)
                 return loss, ntoks, grad
         else:
             def step(batch, lengths, prev_grad, do_update):
                 (loss, ntoks), grad = loss_value_and_grad(self.model, batch, lengths)
+                grad = _apply_grad_update(grad, prev_grad, do_update)
+                return loss, ntoks, grad
 
-                # Accumulate gradients
-                if prev_grad is not None:
-                    grad = tree_map(lambda a, b: a + b, grad, prev_grad)
-
-                # Update if this is an update step
-                if do_update:
-                    if grad_accum_steps > 1:
-                        grad = tree_map(lambda g: g / grad_accum_steps, grad)
-                    if max_grad_norm is not None:
-                        grad = clip_grad_norm(grad, max_grad_norm)
-                    self.optimizer.update(self.model, grad)
-                    grad = None
-
+            def step_packed(batch, segment_ids, offsets, prev_grad, do_update):
+                (loss, ntoks), grad = loss_value_and_grad_packed(
+                    self.model, batch, segment_ids, offsets)
+                grad = _apply_grad_update(grad, prev_grad, do_update)
                 return loss, ntoks, grad
 
         # Training loop state
@@ -157,11 +217,25 @@ class Trainer:
         num_samples = len(self.train_dataset)
         batches_per_epoch = max(1, num_samples // self.config.training.batch_size)
 
-        # Main training loop - cycle infinitely through batches
-        batch_iterator = itertools.cycle(iterate_batches(self.train_dataset, self.config))
+        # Determine start step (for resume support)
+        start_step = self.state.step + 1
 
-        for it, (batch, lengths) in zip(
-            range(1, self.config.training.num_iters + 1),
+        # Main training loop - cycle infinitely through batches
+        if use_packing:
+            batch_iterator = itertools.cycle(
+                iterate_packed_batches(self.train_dataset, self.config))
+        else:
+            batch_iterator = itertools.cycle(
+                iterate_batches(self.train_dataset, self.config))
+
+        # Skip batches for resumed training (Tier-1 resume: re-iterate from start)
+        if start_step > 1:
+            print(f"Resuming from step {start_step - 1}, skipping {start_step - 1} batches...")
+            for _ in range(start_step - 1):
+                next(batch_iterator)
+
+        for it, batch_data in zip(
+            range(start_step, self.config.training.num_iters + 1),
             batch_iterator,
         ):
             # Update epoch count
@@ -177,8 +251,14 @@ class Trainer:
                 if val_loss < self.state.best_val_loss:
                     self.state.best_val_loss = val_loss
 
-            # Training step
-            loss, toks, grad_accum = step(batch, lengths, grad_accum, do_update)
+            # Training step (packed or standard)
+            if use_packing:
+                batch, segment_ids, offsets = batch_data
+                loss, toks, grad_accum = step_packed(
+                    batch, segment_ids, offsets, grad_accum, do_update)
+            else:
+                batch, lengths = batch_data
+                loss, toks, grad_accum = step(batch, lengths, grad_accum, do_update)
             mx.eval(compile_state, loss, toks, grad_accum)  # SAFE POINT
 
             losses += loss.item()

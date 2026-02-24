@@ -69,6 +69,77 @@ def build_parser() -> argparse.ArgumentParser:
         help="Path to checkpoint directory to resume from",
     )
 
+    # --- generate ---
+    gen_parser = subparsers.add_parser(
+        "generate",
+        help="Generate text with optional LoRA adapter",
+    )
+    gen_parser.add_argument(
+        "--model", required=True, help="HuggingFace model ID or local path"
+    )
+    gen_parser.add_argument(
+        "--adapter",
+        default=None,
+        help="Path to checkpoint directory with adapters.safetensors",
+    )
+    gen_parser.add_argument(
+        "--prompt",
+        default=None,
+        help="Text prompt (omit for interactive chat mode)",
+    )
+    gen_parser.add_argument(
+        "--temperature",
+        type=float,
+        default=0.7,
+        help="Sampling temperature (0.0 = greedy, default: 0.7)",
+    )
+    gen_parser.add_argument(
+        "--top-p",
+        type=float,
+        default=0.9,
+        help="Nucleus sampling threshold (default: 0.9)",
+    )
+    gen_parser.add_argument(
+        "--max-tokens",
+        type=int,
+        default=512,
+        help="Maximum tokens to generate (default: 512)",
+    )
+    gen_parser.add_argument(
+        "--repetition-penalty",
+        type=float,
+        default=1.0,
+        help="Repetition penalty (1.0 = disabled, default: 1.0)",
+    )
+    gen_parser.add_argument(
+        "--seed",
+        type=int,
+        default=None,
+        help="RNG seed for reproducible generation",
+    )
+    gen_parser.add_argument(
+        "--trust-remote-code",
+        action="store_true",
+        help="Trust remote code when loading tokenizer",
+    )
+
+    # --- studio ---
+    studio_parser = subparsers.add_parser(
+        "studio",
+        help="Start the LMForge Studio web UI server",
+    )
+    studio_parser.add_argument(
+        "--host",
+        default="127.0.0.1",
+        help="Bind address (default: 127.0.0.1)",
+    )
+    studio_parser.add_argument(
+        "--port",
+        type=int,
+        default=8741,
+        help="Port number (default: 8741)",
+    )
+
     return parser
 
 
@@ -88,6 +159,14 @@ def main(argv: list[str] | None = None) -> None:
         from lmforge.cli.train_cmd import run_train
 
         run_train(args)
+    elif args.command == "generate":
+        from lmforge.cli.generate_cmd import run_generate
+
+        run_generate(args)
+    elif args.command == "studio":
+        from lmforge.cli.studio_cmd import run_studio
+
+        run_studio(args)
     else:
         parser.print_help()
         sys.exit(1)

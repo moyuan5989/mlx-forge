@@ -25,6 +25,9 @@ SUPPORTED_ARCHITECTURES = {
     "llama": "lmforge.models.architectures.llama",
     "phi3": "lmforge.models.architectures.phi3",
     "qwen3": "lmforge.models.architectures.qwen3",
+    "gemma": "lmforge.models.architectures.gemma",
+    "gemma2": "lmforge.models.architectures.gemma",
+    "gemma3": "lmforge.models.architectures.gemma",
 }
 
 
@@ -67,8 +70,7 @@ def get_model_classes(config: dict) -> Tuple[Type[nn.Module], Type]:
         raise ValueError(
             f"Model type '{model_type}'{remapped_note} is not supported.\n\n"
             f"Supported architectures: {supported}\n\n"
-            f"If you need this architecture, please open an issue at:\n"
-            f"https://github.com/yourusername/lmforge/issues"
+            f"If you need this architecture, please open an issue."
         )
 
     module_path = SUPPORTED_ARCHITECTURES[model_type]

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import mlx.core as mx
 import mlx.nn as nn
-from mlx.utils import tree_unflatten
+from mlx.utils import tree_flatten, tree_unflatten
 
 
 class LoRALinear(nn.Module):
@@ -43,15 +43,18 @@ class LoRALinear(nn.Module):
         self.dropout = nn.Dropout(p=dropout) if dropout > 0.0 else None
 
     def __call__(self, x):
-        """Forward pass: y = x @ (lora_a.T @ lora_b.T) * (scale/r)"""
-        # Standard LoRA: y = (scale/r) * (x @ A.T) @ B.T
-        # = (scale/r) * B @ (A @ x)
+        """Forward pass: y = base(x) + (scale/r) * (x @ A.T) @ B.T"""
+        # Base layer output (frozen weights)
+        base_out = self.base_layer(x)
+
+        # LoRA delta: (scale/r) * (x @ A.T) @ B.T
         lora_out = x @ self.lora_a.T  # (batch, r)
         if self.dropout is not None and self.training:
             lora_out = self.dropout(lora_out)
         lora_out = lora_out @ self.lora_b.T  # (batch, out_features)
         lora_out = lora_out * (self.scale / self.r)
-        return lora_out
+
+        return base_out + lora_out
 
     @classmethod
     def from_base(
@@ -63,12 +66,18 @@ class LoRALinear(nn.Module):
         parameters on top.
         """
         # Get dimensions from base linear
-        if isinstance(base_linear, nn.Linear):
+        if isinstance(base_linear, nn.QuantizedLinear):
+            # QuantizedLinear weight is packed: shape (out, packed_in)
+            # Actual in_features = packed_in * (32 // bits)
+            out_features = base_linear.weight.shape[0]
+            in_features = base_linear.weight.shape[1] * (32 // base_linear.bits)
+            bias = hasattr(base_linear, "bias") and base_linear.bias is not None
+        elif isinstance(base_linear, nn.Linear):
             out_features, in_features = base_linear.weight.shape
             # MLX Linear without bias doesn't have a bias attribute at all
             bias = hasattr(base_linear, "bias") and base_linear.bias is not None
         elif hasattr(base_linear, "weight"):
-            # QuantizedLinear or other linear-like module
+            # Other linear-like module
             out_features, in_features = base_linear.weight.shape
             bias = hasattr(base_linear, "bias") and base_linear.bias is not None
         else:
@@ -155,18 +164,19 @@ class LoRAEmbedding(nn.Module):
         self.dropout = nn.Dropout(p=dropout) if dropout > 0.0 else None
 
     def __call__(self, x):
-        """Forward pass: lookup in LoRA embedding."""
-        # x: (batch_size, seq_len) of indices
-        # Standard embedding: weight[x]  shape: (batch_size, seq_len, embedding_dim)
-        # LoRA embedding: (lora_a[x] @ lora_b) * (scale/r)
+        """Forward pass: base_embedding(x) + LoRA delta."""
+        # Base embedding output (frozen weights)
+        base_out = self.base_layer(x)
 
+        # LoRA delta: (lora_a[x] @ lora_b) * (scale/r)
         lora_a_embed = self.lora_a[x]  # (batch, seq, r)
         if self.dropout is not None and self.training:
             lora_a_embed = self.dropout(lora_a_embed)
 
         lora_out = lora_a_embed @ self.lora_b  # (batch, seq, embedding_dim)
         lora_out = lora_out * (self.scale / self.r)
-        return lora_out
+
+        return base_out + lora_out
 
     @classmethod
     def from_base(
@@ -268,8 +278,7 @@ def apply_lora(model, targets: list[tuple[str, object]], config) -> object:
     if len(lora_layers) > 10:
         print(f"  ... and {len(lora_layers) - 10} more")
 
-    # Count trainable parameters using tree_flatten
-    from mlx.utils import tree_flatten
+    # Count trainable parameters
     trainable_params = sum(
         p.size for _, p in tree_flatten(model.trainable_parameters())
     )

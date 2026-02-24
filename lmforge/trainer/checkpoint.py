@@ -9,6 +9,8 @@ Each checkpoint contains exactly three files per V0_DESIGN_FREEZE.md §2.3:
 from __future__ import annotations
 
 import json
+import os
+import shutil
 from pathlib import Path
 
 import mlx.core as mx
@@ -70,7 +72,6 @@ class CheckpointManager:
         except Exception as e:
             # Clean up temp dir on failure
             if tmp_dir.exists():
-                import shutil
                 shutil.rmtree(tmp_dir)
             raise RuntimeError(f"Failed to save checkpoint: {e}") from e
 
@@ -155,7 +156,7 @@ class CheckpointManager:
         best_link = self.checkpoint_dir / "best"
         best_ckpt = None
         if best_link.is_symlink():
-            best_ckpt = self.checkpoint_dir / best_link.readlink()
+            best_ckpt = self.checkpoint_dir / os.readlink(best_link)
 
         # Keep last N + best
         to_keep = set(checkpoints[-keep_last_n:])
@@ -165,7 +166,6 @@ class CheckpointManager:
         # Delete old checkpoints
         for ckpt in checkpoints:
             if ckpt not in to_keep:
-                import shutil
                 shutil.rmtree(ckpt)
 
     def _generate_run_id(self, config) -> str:
