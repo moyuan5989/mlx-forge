@@ -1,4 +1,10 @@
-"""Trainer class for LMForge v0."""
+"""Trainer classes for LMForge.
+
+V2 multi-loss architecture with per-token labels:
+- BaseTrainer: owns training loop, checkpointing, callbacks, evaluation
+- SFTTrainer(BaseTrainer): standard supervised fine-tuning
+- Trainer: alias for SFTTrainer (backward compatibility)
+"""
 
 from __future__ import annotations
 
@@ -12,116 +18,30 @@ import mlx.nn as nn
 from mlx.utils import tree_flatten, tree_map
 
 from lmforge.data.batching import iterate_batches, iterate_packed_batches
+from lmforge.losses.sft import SFTLoss
 from lmforge.trainer.callbacks import CallbackList
 from lmforge.trainer.checkpoint import CheckpointManager
 from lmforge.trainer.optimizer import build_optimizer
 from lmforge.trainer.state import TrainState
 
 
-def loss_fn(model, batch, lengths):
-    """Compute cross-entropy loss with prompt masking.
-
-    Args:
-        model: The model to evaluate
-        batch: Token IDs array of shape (B, T)
-        lengths: Array of shape (B, 2) where [:, 0] is prompt offset and [:, 1] is total length
-
-    Returns:
-        (loss, ntoks): Average loss per token and number of tokens used
-    """
-    inputs = batch[:, :-1]
-    targets = batch[:, 1:]
-    logits = model(inputs)
-
-    # Create mask: compute loss only on tokens in [offset, length)
-    # Note: steps is 1-indexed (starts at 1, not 0)
-    steps = mx.arange(1, targets.shape[1] + 1)
-    mask = (steps >= lengths[:, 0:1]) & (steps < lengths[:, 1:2])
-
-    # Cross-entropy with masking
-    ce = nn.losses.cross_entropy(logits, targets, reduction="none") * mask
-    ntoks = mask.sum()
-
-    return ce.sum() / ntoks, ntoks
-
-
-def loss_fn_packed(model, batch, segment_ids, offsets):
-    """Compute cross-entropy loss for packed sequences.
-
-    Loss is computed only on completion tokens within each segment,
-    respecting segment boundaries so no cross-sequence loss leaks.
-
-    Args:
-        model: The model to evaluate
-        batch: Token IDs array of shape (B, T)
-        segment_ids: Segment membership per token, shape (B, T). -1 = padding
-        offsets: Per-segment (prompt_end, seq_end), shape (B, max_segments, 2)
-    """
-    inputs = batch[:, :-1]
-    targets = batch[:, 1:]
-    seg_in = segment_ids[:, :-1]
-    seg_out = segment_ids[:, 1:]
-    logits = model(inputs)
-
-    # Loss only where consecutive tokens are same segment AND not padding
-    same_seg = (seg_in == seg_out) & (seg_out >= 0)
-
-    # Build prompt mask: for each position, check if it's past the prompt
-    # offset for its segment. We build this from the offsets array.
-    B, T_out = targets.shape
-    positions = mx.broadcast_to(mx.arange(T_out)[None, :], (B, T_out))
-    # For each position, get the prompt_end of its segment
-    # seg_out contains the segment id; we look up offsets[b, seg_id, 0]
-    # To avoid fancy indexing issues in MLX, compute per-segment masks
-    n_segs = offsets.shape[1]
-    past_prompt = mx.zeros((B, T_out), dtype=mx.bool_)
-    for s in range(n_segs):
-        seg_mask = (seg_out == s)
-        prompt_end = offsets[:, s, 0:1]  # (B, 1)
-        # Position is 0-indexed in the packed row; prompt_end is absolute position
-        # We need: position+1 >= prompt_end (since targets are shifted by 1)
-        past = (positions + 1) >= prompt_end
-        past_prompt = past_prompt | (seg_mask & past)
-
-    mask = same_seg & past_prompt
-
-    ce = nn.losses.cross_entropy(logits, targets, reduction="none") * mask
-    ntoks = mask.sum()
-
-    return ce.sum() / ntoks, ntoks
-
-
-def loss_value_and_grad(model, batch, lengths):
-    """Compute loss and gradients.
-
-    Uses nn.value_and_grad to only compute gradients for trainable parameters,
-    which is required for QLoRA (avoids QuantizedMatmul VJP errors).
-    """
-    return nn.value_and_grad(model, loss_fn)(model, batch, lengths)
-
-
-def loss_value_and_grad_packed(model, batch, segment_ids, offsets):
-    """Compute loss and gradients for packed sequences.
-
-    Uses nn.value_and_grad to only compute gradients for trainable parameters.
-    """
-    return nn.value_and_grad(model, loss_fn_packed)(model, batch, segment_ids, offsets)
-
-
 def clip_grad_norm(grads, max_norm: float):
     """Clip gradients by global norm."""
-    # Compute global norm using tree_flatten to iterate over leaf values
     grad_norm = mx.sqrt(sum((g * g).sum() for _, g in tree_flatten(grads)))
-
-    # Clip if needed
     scale = max_norm / (grad_norm + 1e-6)
     scale = mx.minimum(scale, 1.0)
-
     return tree_map(lambda g: g * scale, grads)
 
 
-class Trainer:
-    """Runs LoRA SFT training with compiled step, callbacks, and checkpointing."""
+class BaseTrainer:
+    """Base trainer owning the training loop, checkpointing, and callbacks.
+
+    Subclasses must implement:
+    - _build_step_functions(): return step function dict
+    - _build_batch_iterator(): return the batch iterator
+    - _execute_step(step_fn, batch_data, grad_accum, do_update): run one step
+    - evaluate(): run validation
+    """
 
     def __init__(self, model, config, train_dataset, val_dataset,
                  callbacks=None, state=None, checkpoint_manager=None):
@@ -142,34 +62,15 @@ class Trainer:
             rng_seed=config.training.seed,
         )
 
-        # Cooperative pause support (optional)
         self._pause_requested = Event()
         self._paused = Event()
 
-    def fit(self) -> TrainState:
-        """Run the full training loop. Returns final TrainState."""
-        # Set memory limit if on Metal
-        if mx.metal.is_available():
-            device_info = mx.metal.device_info()
-            if "max_recommended_working_set_size" in device_info:
-                mx.set_wired_limit(device_info["max_recommended_working_set_size"])
-
-        # Seed RNG
-        mx.random.seed(self.config.training.seed)
-
-        # Callbacks
-        self.callbacks.on_train_begin(self.state)
-
-        # Build compiled step function
+    def _build_grad_update_fn(self):
+        """Build the shared gradient accumulation and update logic."""
         grad_accum_steps = self.config.training.grad_accumulation_steps
         max_grad_norm = self.config.training.max_grad_norm
-        use_packing = self.config.data.packing
-
-        # compile_state tracks the mutable state for mx.compile
-        compile_state = [self.model.state, self.optimizer.state, mx.random.state]
 
         def _apply_grad_update(grad, prev_grad, do_update):
-            """Shared gradient accumulation and update logic."""
             if prev_grad is not None:
                 grad = tree_map(lambda a, b: a + b, grad, prev_grad)
             if do_update:
@@ -181,30 +82,44 @@ class Trainer:
                 grad = None
             return grad
 
-        if not self.config.runtime.eager:
-            @partial(mx.compile, inputs=compile_state, outputs=compile_state)
-            def step(batch, lengths, prev_grad, do_update):
-                (loss, ntoks), grad = loss_value_and_grad(self.model, batch, lengths)
-                grad = _apply_grad_update(grad, prev_grad, do_update)
-                return loss, ntoks, grad
+        return _apply_grad_update
 
-            @partial(mx.compile, inputs=compile_state, outputs=compile_state)
-            def step_packed(batch, segment_ids, offsets, prev_grad, do_update):
-                (loss, ntoks), grad = loss_value_and_grad_packed(
-                    self.model, batch, segment_ids, offsets)
-                grad = _apply_grad_update(grad, prev_grad, do_update)
-                return loss, ntoks, grad
-        else:
-            def step(batch, lengths, prev_grad, do_update):
-                (loss, ntoks), grad = loss_value_and_grad(self.model, batch, lengths)
-                grad = _apply_grad_update(grad, prev_grad, do_update)
-                return loss, ntoks, grad
+    def _build_step_functions(self, compile_state, apply_grad_update):
+        """Build compiled step functions. Override in subclasses."""
+        raise NotImplementedError
 
-            def step_packed(batch, segment_ids, offsets, prev_grad, do_update):
-                (loss, ntoks), grad = loss_value_and_grad_packed(
-                    self.model, batch, segment_ids, offsets)
-                grad = _apply_grad_update(grad, prev_grad, do_update)
-                return loss, ntoks, grad
+    def _build_batch_iterator(self):
+        """Build the batch iterator. Override in subclasses."""
+        raise NotImplementedError
+
+    def _execute_step(self, step_fns, batch_data, grad_accum, do_update, compile_state):
+        """Execute one training step. Override in subclasses.
+
+        Returns:
+            (loss, toks, grad_accum): loss scalar, token count, accumulated gradients.
+        """
+        raise NotImplementedError
+
+    def evaluate(self) -> float:
+        """Run evaluation. Override in subclasses."""
+        raise NotImplementedError
+
+    def fit(self) -> TrainState:
+        """Run the full training loop. Returns final TrainState."""
+        if mx.metal.is_available():
+            device_info = mx.metal.device_info()
+            if "max_recommended_working_set_size" in device_info:
+                mx.set_wired_limit(device_info["max_recommended_working_set_size"])
+
+        mx.random.seed(self.config.training.seed)
+        self.callbacks.on_train_begin(self.state)
+
+        grad_accum_steps = self.config.training.grad_accumulation_steps
+
+        compile_state = [self.model.state, self.optimizer.state, mx.random.state]
+        apply_grad_update = self._build_grad_update_fn()
+        step_fns = self._build_step_functions(compile_state, apply_grad_update)
+        batch_iterator = self._build_batch_iterator()
 
         # Training loop state
         grad_accum = None
@@ -213,22 +128,12 @@ class Trainer:
         steps_since_report = 0
         report_start_time = time.perf_counter()
 
-        # Calculate batches per epoch for epoch tracking
         num_samples = len(self.train_dataset)
         batches_per_epoch = max(1, num_samples // self.config.training.batch_size)
 
-        # Determine start step (for resume support)
         start_step = self.state.step + 1
 
-        # Main training loop - cycle infinitely through batches
-        if use_packing:
-            batch_iterator = itertools.cycle(
-                iterate_packed_batches(self.train_dataset, self.config))
-        else:
-            batch_iterator = itertools.cycle(
-                iterate_batches(self.train_dataset, self.config))
-
-        # Skip batches for resumed training (Tier-1 resume: re-iterate from start)
+        # Skip batches for resumed training
         if start_step > 1:
             print(f"Resuming from step {start_step - 1}, skipping {start_step - 1} batches...")
             for _ in range(start_step - 1):
@@ -238,7 +143,6 @@ class Trainer:
             range(start_step, self.config.training.num_iters + 1),
             batch_iterator,
         ):
-            # Update epoch count
             self.state.epoch = (it - 1) // batches_per_epoch
             do_update = (it % grad_accum_steps == 0)
 
@@ -251,15 +155,10 @@ class Trainer:
                 if val_loss < self.state.best_val_loss:
                     self.state.best_val_loss = val_loss
 
-            # Training step (packed or standard)
-            if use_packing:
-                batch, segment_ids, offsets = batch_data
-                loss, toks, grad_accum = step_packed(
-                    batch, segment_ids, offsets, grad_accum, do_update)
-            else:
-                batch, lengths = batch_data
-                loss, toks, grad_accum = step(batch, lengths, grad_accum, do_update)
-            mx.eval(compile_state, loss, toks, grad_accum)  # SAFE POINT
+            # Training step
+            loss, toks, grad_accum = self._execute_step(
+                step_fns, batch_data, grad_accum, do_update, compile_state)
+            mx.eval(compile_state, loss, toks, grad_accum)
 
             losses += loss.item()
             n_tokens += toks.item()
@@ -291,23 +190,89 @@ class Trainer:
                 ckpt_dir = self.checkpoint_manager.save(self.state, self.model, self.optimizer)
                 self.callbacks.on_save(self.state, ckpt_dir)
 
-            # Cooperative pause check (optional feature)
+            # Cooperative pause
             if self._pause_requested.is_set():
                 self.checkpoint_manager.save(self.state, self.model, self.optimizer)
                 self._paused.set()
-                self._pause_requested.wait()  # Block until resume
+                self._pause_requested.wait()
 
         self.callbacks.on_train_end(self.state)
         return self.state
 
+
+class SFTTrainer(BaseTrainer):
+    """SFT trainer — standard supervised fine-tuning with per-token labels."""
+
+    def __init__(self, model, config, train_dataset, val_dataset,
+                 callbacks=None, state=None, checkpoint_manager=None):
+        super().__init__(model, config, train_dataset, val_dataset,
+                         callbacks, state, checkpoint_manager)
+        self.loss = SFTLoss()
+
+    def _build_step_functions(self, compile_state, apply_grad_update):
+        """Build compiled SFT step functions."""
+        loss_value_and_grad = nn.value_and_grad(self.model, self.loss)
+        loss_value_and_grad_packed = nn.value_and_grad(
+            self.model, self.loss.packed)
+
+        if not self.config.runtime.eager:
+            @partial(mx.compile, inputs=compile_state, outputs=compile_state)
+            def step(input_ids, labels, prev_grad, do_update):
+                (loss, ntoks), grad = loss_value_and_grad(
+                    self.model, input_ids, labels)
+                grad = apply_grad_update(grad, prev_grad, do_update)
+                return loss, ntoks, grad
+
+            @partial(mx.compile, inputs=compile_state, outputs=compile_state)
+            def step_packed(input_ids, labels, segment_ids, prev_grad, do_update):
+                (loss, ntoks), grad = loss_value_and_grad_packed(
+                    self.model, input_ids, labels, segment_ids)
+                grad = apply_grad_update(grad, prev_grad, do_update)
+                return loss, ntoks, grad
+        else:
+            def step(input_ids, labels, prev_grad, do_update):
+                (loss, ntoks), grad = loss_value_and_grad(
+                    self.model, input_ids, labels)
+                grad = apply_grad_update(grad, prev_grad, do_update)
+                return loss, ntoks, grad
+
+            def step_packed(input_ids, labels, segment_ids, prev_grad, do_update):
+                (loss, ntoks), grad = loss_value_and_grad_packed(
+                    self.model, input_ids, labels, segment_ids)
+                grad = apply_grad_update(grad, prev_grad, do_update)
+                return loss, ntoks, grad
+
+        return {"standard": step, "packed": step_packed}
+
+    def _build_batch_iterator(self):
+        """Build the SFT batch iterator (standard or packed)."""
+        if self.config.data.packing:
+            return itertools.cycle(
+                iterate_packed_batches(self.train_dataset, self.config))
+        else:
+            return itertools.cycle(
+                iterate_batches(self.train_dataset, self.config))
+
+    def _execute_step(self, step_fns, batch_data, grad_accum, do_update, compile_state):
+        """Execute one SFT training step."""
+        if self.config.data.packing:
+            input_ids, labels, segment_ids = batch_data
+            loss, toks, grad_accum = step_fns["packed"](
+                input_ids, labels, segment_ids, grad_accum, do_update)
+        else:
+            input_ids, labels = batch_data
+            loss, toks, grad_accum = step_fns["standard"](
+                input_ids, labels, grad_accum, do_update)
+        return loss, toks, grad_accum
+
     def evaluate(self) -> float:
-        """Run evaluation on the validation set. Returns val_loss."""
+        """Run SFT evaluation on the validation set. Returns val_loss."""
         total_loss = 0.0
         total_tokens = 0
         num_batches = 0
 
-        for batch, lengths in iterate_batches(self.val_dataset, self.config):
-            loss, ntoks = loss_fn(self.model, batch, lengths)
+        for input_ids, labels in iterate_batches(self.val_dataset, self.config):
+            loss, ntoks = self.loss(self.model, input_ids, labels)
             mx.eval(loss, ntoks)
 
             total_loss += loss.item() * ntoks.item()
@@ -315,3 +280,30 @@ class Trainer:
             num_batches += 1
 
         return total_loss / total_tokens if total_tokens > 0 else float("inf")
+
+
+# Backward compatibility: Trainer is an alias for SFTTrainer
+Trainer = SFTTrainer
+
+
+# Backward-compatible module-level functions
+def loss_fn(model, input_ids, labels):
+    """Compute cross-entropy loss with label masking."""
+    from lmforge.losses.sft import loss_fn as _loss_fn
+    return _loss_fn(model, input_ids, labels)
+
+
+def loss_fn_packed(model, input_ids, labels, segment_ids):
+    """Compute cross-entropy loss for packed sequences."""
+    from lmforge.losses.sft import loss_fn_packed as _loss_fn_packed
+    return _loss_fn_packed(model, input_ids, labels, segment_ids)
+
+
+def loss_value_and_grad(model, input_ids, labels):
+    """Compute loss and gradients."""
+    return nn.value_and_grad(model, loss_fn)(model, input_ids, labels)
+
+
+def loss_value_and_grad_packed(model, input_ids, labels, segment_ids):
+    """Compute loss and gradients for packed sequences."""
+    return nn.value_and_grad(model, loss_fn_packed)(model, input_ids, labels, segment_ids)

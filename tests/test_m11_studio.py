@@ -87,27 +87,30 @@ def mock_run(tmp_runs_dir):
 
 @pytest.fixture
 def tmp_cache_dir(tmp_path):
-    """Create a temporary dataset cache directory with mock data."""
-    cache_dir = tmp_path / "cache" / "preprocessed"
-    cache_dir.mkdir(parents=True)
+    """Create a temporary datasets directory with mock processed data."""
+    datasets_dir = tmp_path / "datasets"
+    processed_dir = datasets_dir / "processed"
+    processed_dir.mkdir(parents=True)
 
-    # Create a mock cached dataset
-    fp = "abc123def456"
-    ds_dir = cache_dir / fp
+    # Create a mock processed dataset
+    ds_name = "train--test--model"
+    ds_dir = processed_dir / ds_name
     ds_dir.mkdir()
     meta = {
+        "schema_version": 2,
+        "dataset_name": "train",
+        "model_id": "test/model",
         "num_samples": 1000,
         "total_tokens": 500000,
         "min_length": 10,
         "max_length": 2048,
         "mean_length": 500.0,
-        "format": "chat",
-        "num_shards": 1,
+        "format": "sft",
     }
     with open(ds_dir / "meta.json", "w") as f:
         json.dump(meta, f)
 
-    return cache_dir
+    return datasets_dir
 
 
 @pytest.fixture
@@ -120,8 +123,8 @@ def app(tmp_runs_dir, tmp_cache_dir):
 
     app = create_app(runs_dir=str(tmp_runs_dir))
 
-    # Override dataset service to use tmp dir
-    datasets.set_dataset_service(DatasetService(str(tmp_cache_dir)))
+    # Override dataset service to use tmp datasets dir
+    datasets.set_dataset_service(DatasetService(datasets_dir=str(tmp_cache_dir)))
 
     return app
 
@@ -302,33 +305,33 @@ class TestDatasetService:
 
     def test_list_datasets(self, tmp_cache_dir):
         from lmforge.studio.services.dataset_service import DatasetService
-        service = DatasetService(str(tmp_cache_dir))
+        service = DatasetService(datasets_dir=str(tmp_cache_dir))
         datasets = service.list_datasets()
         assert len(datasets) == 1
-        assert datasets[0]["fingerprint"] == "abc123def456"
+        assert datasets[0]["dataset_name"] == "train"
         assert datasets[0]["num_samples"] == 1000
 
     def test_get_dataset(self, tmp_cache_dir):
         from lmforge.studio.services.dataset_service import DatasetService
-        service = DatasetService(str(tmp_cache_dir))
-        ds = service.get_dataset("abc123def456")
+        service = DatasetService(datasets_dir=str(tmp_cache_dir))
+        ds = service.get_dataset("train--test--model")
         assert ds is not None
         assert ds["total_tokens"] == 500000
 
     def test_get_dataset_not_found(self, tmp_cache_dir):
         from lmforge.studio.services.dataset_service import DatasetService
-        service = DatasetService(str(tmp_cache_dir))
+        service = DatasetService(datasets_dir=str(tmp_cache_dir))
         assert service.get_dataset("nonexistent") is None
 
     def test_delete_dataset(self, tmp_cache_dir):
         from lmforge.studio.services.dataset_service import DatasetService
-        service = DatasetService(str(tmp_cache_dir))
-        assert service.delete_dataset("abc123def456") is True
-        assert service.get_dataset("abc123def456") is None
+        service = DatasetService(datasets_dir=str(tmp_cache_dir))
+        assert service.delete_dataset("train--test--model") is True
+        assert service.get_dataset("train--test--model") is None
 
     def test_delete_dataset_not_found(self, tmp_cache_dir):
         from lmforge.studio.services.dataset_service import DatasetService
-        service = DatasetService(str(tmp_cache_dir))
+        service = DatasetService(datasets_dir=str(tmp_cache_dir))
         assert service.delete_dataset("nonexistent") is False
 
 
@@ -478,10 +481,10 @@ class TestDatasetsAPI:
         assert resp.status_code == 200
         datasets = resp.json()
         assert len(datasets) == 1
-        assert datasets[0]["fingerprint"] == "abc123def456"
+        assert datasets[0]["dataset_name"] == "train"
 
     def test_get_dataset(self, client):
-        resp = client.get("/api/v1/datasets/abc123def456")
+        resp = client.get("/api/v1/datasets/train--test--model")
         assert resp.status_code == 200
         ds = resp.json()
         assert ds["num_samples"] == 1000
@@ -491,7 +494,7 @@ class TestDatasetsAPI:
         assert resp.status_code == 404
 
     def test_delete_dataset(self, client):
-        resp = client.delete("/api/v1/datasets/abc123def456")
+        resp = client.delete("/api/v1/datasets/train--test--model")
         assert resp.status_code == 200
         assert resp.json()["status"] == "deleted"
 

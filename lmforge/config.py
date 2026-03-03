@@ -1,6 +1,7 @@
-"""Pydantic v2 config models for LMForge v0.
+"""Pydantic v2 config models for LMForge.
 
 All schemas match V0_DESIGN_FREEZE.md §2.1 exactly.
+V2 additions are backward-compatible optional fields.
 """
 
 from __future__ import annotations
@@ -78,7 +79,8 @@ class DataConfig(BaseModel):
     train: str
     valid: str
     test: Optional[str] = None
-    cache_dir: str = "~/.lmforge/cache/preprocessed"
+    dataset: Optional[str] = None   # Named dataset from catalog
+    mix: Optional[str] = None       # Named mix config (future)
     max_seq_length: int = 2048
     mask_prompt: bool = True
     packing: bool = False
@@ -103,6 +105,11 @@ class TrainingParams(BaseModel):
     steps_per_save: int = 100
     val_batches: int = 25
     keep_last_n_checkpoints: int = 3
+
+    # V2: Training type and DPO parameters
+    training_type: Literal["sft", "dpo"] = "sft"
+    dpo_beta: float = 0.1
+    dpo_reference_free: bool = True
 
     @model_validator(mode="after")
     def validate_save_accum(self) -> TrainingParams:

@@ -30,7 +30,6 @@ def sample_config_dict():
         "data": {
             "train": "./data/train.jsonl",
             "valid": "./data/valid.jsonl",
-            "cache_dir": "~/.lmforge/cache/preprocessed",
             "max_seq_length": 2048,
             "mask_prompt": True,
         },

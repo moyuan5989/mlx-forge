@@ -6,7 +6,6 @@ from pathlib import Path
 from transformers import AutoTokenizer
 
 from lmforge._version import __version__
-from lmforge.data.cache import check_cache, compute_fingerprint, read_cache, write_cache
 from lmforge.data.formats import detect_format, validate_samples
 from lmforge.data.preprocessing import tokenize_dataset
 from lmforge.inference.engine import GenerationResult
@@ -17,17 +16,19 @@ def prepare(
     model: str,
     output: str | None = None,
     *,
+    name: str | None = None,
     trust_remote_code: bool = False,
     max_seq_length: int = 2048,
     mask_prompt: bool = True,
     revision: str | None = None,
 ) -> dict:
-    """Pre-tokenize a dataset and write a safetensors cache to disk.
+    """Pre-tokenize a dataset and save as Arrow dataset for memory-mapped access.
 
     Args:
         data_path: Path to JSONL data file
         model: HuggingFace model ID or local path (for tokenizer)
-        output: Output cache directory (default: ~/.lmforge/cache/preprocessed)
+        output: Ignored (kept for CLI compat). Storage is now in ~/.lmforge/datasets/
+        name: Dataset name for the registry. If omitted, derived from filename.
         trust_remote_code: Trust remote code when loading tokenizer
         max_seq_length: Maximum sequence length
         mask_prompt: Mask prompt tokens from loss
@@ -36,13 +37,10 @@ def prepare(
     Returns:
         Dict of statistics (sample count, total tokens, etc.)
     """
+    from lmforge.data import backend
     from lmforge.models.resolve import resolve_model
 
-    # Default output directory
-    if output is None:
-        output = "~/.lmforge/cache/preprocessed"
-
-    # Resolve model (HF repo ID → local path)
+    # Resolve model (HF repo ID -> local path)
     print(f"Resolving model: {model}...")
     resolved = resolve_model(
         model,
@@ -78,26 +76,26 @@ def prepare(
     print(f"Validating {len(samples)} samples...")
     errors = validate_samples(samples, fmt)
     if errors:
-        error_msg = "\n".join(errors[:10])  # Show first 10 errors
+        error_msg = "\n".join(errors[:10])
         if len(errors) > 10:
             error_msg += f"\n... and {len(errors) - 10} more errors"
         raise ValueError(f"Validation failed:\n{error_msg}")
 
-    # Compute fingerprint
-    fingerprint = compute_fingerprint(data_path, tokenizer)
-    print(f"Data fingerprint: {fingerprint}")
+    # Derive dataset name from filename if not provided
+    dataset_name = name or data_path_obj.stem
 
-    # Check cache
-    if check_cache(output, fingerprint):
-        print(f"Cache hit! Loading from {output}/{fingerprint}")
-        meta_path = Path(output).expanduser() / fingerprint / "meta.json"
+    # Check if already processed
+    if backend.tokenized_exists(dataset_name, model):
+        print(f"Already processed: {dataset_name} for {model}")
+        path = backend.get_processed_path(dataset_name, model)
+        meta_path = path / "meta.json"
         with open(meta_path) as f:
             meta = json.load(f)
-        print(f"✓ Loaded {meta['num_samples']} samples, {meta['total_tokens']} tokens")
+        print(f"  {meta['num_samples']} samples, {meta['total_tokens']} tokens")
         return meta
 
-    # Cache miss - tokenize
-    print(f"Cache miss. Tokenizing {len(samples)} samples...")
+    # Tokenize
+    print(f"Tokenizing {len(samples)} samples...")
     tokenized = tokenize_dataset(
         samples,
         tokenizer,
@@ -106,14 +104,17 @@ def prepare(
         max_seq_length=max_seq_length,
     )
 
-    # Write cache
-    print(f"Writing cache to {output}/{fingerprint}...")
-    meta = write_cache(output, fingerprint, tokenized, fmt)
+    # Save via datasets backend
+    print(f"Saving to datasets backend...")
+    path = backend.save_tokenized(dataset_name, model, tokenized)
 
-    print(f"✓ Preprocessed {meta['num_samples']} samples")
+    meta_path = path / "meta.json"
+    with open(meta_path) as f:
+        meta = json.load(f)
+
+    print(f"  Preprocessed {meta['num_samples']} samples")
     print(f"  Total tokens: {meta['total_tokens']}")
     print(f"  Min/mean/max length: {meta['min_length']}/{meta['mean_length']:.1f}/{meta['max_length']}")
-    print(f"  Shards: {meta['num_shards']}")
 
     return meta
 
@@ -124,7 +125,6 @@ def train(config, resume: str | None = None) -> "lmforge.trainer.state.TrainStat
     Args:
         config: Path to a YAML config file (str) or a TrainingConfig instance.
         resume: Path to checkpoint directory to resume from.
-                Example: "~/.lmforge/runs/.../checkpoints/step-0000500"
 
     Returns:
         Final TrainState after training completes.
@@ -135,7 +135,7 @@ def train(config, resume: str | None = None) -> "lmforge.trainer.state.TrainStat
     from lmforge.adapters.lora import apply_lora
     from lmforge.adapters.targeting import get_patterns, resolve_targets
     from lmforge.config import TrainingConfig
-    from lmforge.data.cache import check_cache, read_cache
+    from lmforge.data import backend
     from lmforge.manifest import write_manifest
     from lmforge.models.loader import load_model
     from lmforge.models.resolve import resolve_model
@@ -151,7 +151,7 @@ def train(config, resume: str | None = None) -> "lmforge.trainer.state.TrainStat
     print(f"Adapter: {config.adapter.method} (rank={config.adapter.rank})")
     print()
 
-    # Resolve model (HF repo ID → local path)
+    # Resolve model (HF repo ID -> local path)
     print("Resolving model...")
     resolved_model = resolve_model(
         config.model.path,
@@ -210,7 +210,7 @@ def train(config, resume: str | None = None) -> "lmforge.trainer.state.TrainStat
 
     apply_lora(model, targets, config.adapter)
 
-    # Count parameters using tree_flatten for nested dicts
+    # Count parameters
     from mlx.utils import tree_flatten
     trainable_params = sum(p.size for _, p in tree_flatten(model.trainable_parameters()))
     total_params = sum(p.size for _, p in tree_flatten(model.parameters()))
@@ -224,35 +224,37 @@ def train(config, resume: str | None = None) -> "lmforge.trainer.state.TrainStat
         print()
 
     # Load or prepare training and validation data
-    tokenizer_for_data = tokenizer_path if tokenizer_path else resolved_model.local_path
-    from lmforge.data.cache import compute_fingerprint
-    cache_dir = Path(config.data.cache_dir).expanduser()
+    tokenizer_for_data = config.model.tokenizer_path or config.model.path
 
     def _load_or_prepare(data_path: str, label: str):
-        """Load data from cache or run prepare if cache miss."""
+        """Load data from backend or run prepare if not cached."""
         print(f"Loading {label} data...")
-        fingerprint = compute_fingerprint(data_path, tokenizer)
-        if check_cache(config.data.cache_dir, fingerprint):
-            print(f"Cache hit: {fingerprint}")
-            meta_path = cache_dir / fingerprint / "meta.json"
-            with open(meta_path) as f:
-                meta = json.load(f)
-            print(f"  {meta['num_samples']} samples, {meta['total_tokens']} tokens")
+        dataset_name = Path(data_path).stem
+
+        if backend.tokenized_exists(dataset_name, config.model.path):
+            print(f"Cache hit: {dataset_name}")
+            ds = backend.load_tokenized(dataset_name, config.model.path)
+            print(f"  {len(ds)} samples (memory-mapped)")
+            return dataset_name, ds
         else:
             print(f"Cache miss for {data_path}. Running prepare...")
             prepare(
                 data_path,
                 tokenizer_for_data,
-                config.data.cache_dir,
+                name=dataset_name,
                 trust_remote_code=config.model.trust_remote_code,
                 max_seq_length=config.data.max_seq_length,
                 mask_prompt=config.data.mask_prompt,
             )
-        return fingerprint, read_cache(config.data.cache_dir, fingerprint)
+            ds = backend.load_tokenized(dataset_name, config.model.path)
+            return dataset_name, ds
 
-    train_fingerprint, train_dataset = _load_or_prepare(config.data.train, "training")
+    train_name, train_dataset = _load_or_prepare(config.data.train, "training")
     _, val_dataset = _load_or_prepare(config.data.valid, "validation")
     print()
+
+    # Compute fingerprint for manifest (backward compat)
+    train_fingerprint = backend.compute_fingerprint(config.data.train, tokenizer)
 
     # Write manifest
     print("Writing manifest...")
@@ -286,15 +288,26 @@ def train(config, resume: str | None = None) -> "lmforge.trainer.state.TrainStat
         except ImportError:
             print("Warning: wandb not installed, skipping WandB logging")
 
-    # Create trainer
-    trainer = Trainer(
-        model=model,
-        config=config,
-        train_dataset=train_dataset,
-        val_dataset=val_dataset,
-        callbacks=callbacks,
-        checkpoint_manager=manager,
-    )
+    # Create trainer (SFT or DPO based on training_type)
+    if config.training.training_type == "dpo":
+        from lmforge.trainer.dpo_trainer import DPOTrainer
+        trainer = DPOTrainer(
+            model=model,
+            config=config,
+            train_dataset=train_dataset,
+            val_dataset=val_dataset,
+            callbacks=callbacks,
+            checkpoint_manager=manager,
+        )
+    else:
+        trainer = Trainer(
+            model=model,
+            config=config,
+            train_dataset=train_dataset,
+            val_dataset=val_dataset,
+            callbacks=callbacks,
+            checkpoint_manager=manager,
+        )
 
     # Handle resume from checkpoint
     if resume:
@@ -348,11 +361,7 @@ def _validate_resume(resume_path: Path, config) -> None:
 
 
 def _enable_gradient_checkpointing(model) -> None:
-    """Wrap each transformer layer's __call__ with mx.checkpoint.
-
-    This causes activations to be recomputed during the backward pass
-    instead of stored, reducing memory at the cost of ~30% more compute.
-    """
+    """Wrap each transformer layer's __call__ with mx.checkpoint."""
     import mlx.core as mx
 
     if hasattr(model, "model") and hasattr(model.model, "layers"):
@@ -374,25 +383,7 @@ def generate(
     seed: int | None = None,
     stream: bool = False,
 ) -> GenerationResult:
-    """Generate text from a model with optional LoRA adapter.
-
-    Args:
-        model: HuggingFace model ID or local path.
-        prompt: Raw text prompt (mutually exclusive with messages).
-        messages: Chat messages list (mutually exclusive with prompt).
-        adapter: Path to checkpoint directory with adapters.safetensors.
-        temperature: Sampling temperature (0.0 = greedy).
-        top_p: Nucleus sampling threshold.
-        max_tokens: Maximum tokens to generate.
-        repetition_penalty: Penalty for repeating tokens.
-        trust_remote_code: Trust remote code when loading tokenizer.
-        seed: RNG seed for reproducible generation.
-        stream: If True, returns a generator yielding token strings.
-
-    Returns:
-        GenerationResult with text, stats, and finish reason.
-        If stream=True, returns a generator of token strings instead.
-    """
+    """Generate text from a model with optional LoRA adapter."""
     from lmforge.inference.engine import (
         generate as _generate,
         generate_tokens,
@@ -406,7 +397,6 @@ def generate(
     )
 
     if stream:
-        # Tokenize
         if messages is not None:
             prompt_tokens = tokenizer.apply_chat_template(
                 messages, add_generation_prompt=True

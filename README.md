@@ -6,14 +6,14 @@ LMForge is a production-ready framework for fine-tuning large language models us
 
 ## Features
 
-- ✅ **Automatic HF Model Loading** - Use `model.path: "Qwen/Qwen3-0.8B"` directly in your config
-- ✅ **LoRA Fine-Tuning** - Efficient adapter-based training with glob-based targeting
-- ✅ **Data Pipeline** - Auto-detection of chat/completions/text formats with caching
-- ✅ **Compiled Training** - MLX-compiled training loop with gradient accumulation
-- ✅ **Smart Checkpointing** - Atomic saves, retention policy, automatic resume
-- ✅ **Metrics Logging** - JSONL metrics + console output + optional WandB
-- ✅ **Offline Mode** - Full offline capability after first model download
-- ✅ **Library-First** - All operations callable as Python functions
+- **Automatic HF Model Loading** - Use `model.path: "Qwen/Qwen3-0.8B"` directly in your config
+- **LoRA Fine-Tuning** - Efficient adapter-based training with glob-based targeting
+- **Data Pipeline** - Auto-detection of chat/completions/text formats with caching
+- **Compiled Training** - MLX-compiled training loop with gradient accumulation
+- **Smart Checkpointing** - Atomic saves, retention policy, automatic resume
+- **Metrics Logging** - JSONL metrics + console output + optional WandB
+- **Offline Mode** - Full offline capability after first model download
+- **Library-First** - All operations callable as Python functions
 
 ## Quick Start
 
@@ -234,13 +234,6 @@ LMForge follows these design principles:
 - **Tier-1 checkpointing** - Adapters + optimizer + state (state-consistent resume)
 - **Stateless LR schedules** - Pure functions of step number, no saved scheduler state
 - **Fail fast** - Validate all configs before loading models or data
-
-## Documentation
-
-- `CLAUDE.md` - Implementation guide
-- `V0_DESIGN_FREEZE.md` - Frozen v0 contracts
-- `M7_HF_MODEL_LOADING_DESIGN.md` - Model resolution design
-- `examples/train.yaml` - Example training config
 
 ## License
 

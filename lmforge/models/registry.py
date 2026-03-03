@@ -16,7 +16,7 @@ import mlx.nn as nn
 # e.g., "mistral" models use the same architecture as "llama"
 MODEL_REMAPPING = {
     "mistral": "llama",
-    # Add more remappings as needed
+    "llama3": "llama",
 }
 
 # Explicit allowlist of supported architectures
@@ -24,6 +24,8 @@ MODEL_REMAPPING = {
 SUPPORTED_ARCHITECTURES = {
     "llama": "lmforge.models.architectures.llama",
     "phi3": "lmforge.models.architectures.phi3",
+    "phi4": "lmforge.models.architectures.phi4",
+    "qwen2": "lmforge.models.architectures.qwen2",
     "qwen3": "lmforge.models.architectures.qwen3",
     "gemma": "lmforge.models.architectures.gemma",
     "gemma2": "lmforge.models.architectures.gemma",

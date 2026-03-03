@@ -335,65 +335,63 @@ class TestGradientCheckpointing:
 # =============================================================================
 
 class TestSequencePacking:
-    """Tests for sequence packing algorithm."""
+    """Tests for sequence packing algorithm (V2: input_ids + labels)."""
 
     def test_pack_single_sequence(self):
         """Single sequence should create one bin."""
         from lmforge.data.packing import pack_sequences
 
-        dataset = [{"tokens": [1, 2, 3, 4, 5], "offset": 2}]
+        dataset = [{"input_ids": [1, 2, 3, 4, 5], "labels": [-100, -100, 3, 4, 5]}]
         packed = pack_sequences(dataset, max_seq_length=32)
 
         assert len(packed) == 1
-        assert packed[0].tokens == [1, 2, 3, 4, 5]
+        assert packed[0].input_ids == [1, 2, 3, 4, 5]
+        assert packed[0].labels == [-100, -100, 3, 4, 5]
         assert packed[0].segment_ids == [0, 0, 0, 0, 0]
-        assert packed[0].offsets == [(2, 5)]
 
     def test_pack_multiple_short_sequences(self):
         """Short sequences should be packed into fewer bins."""
         from lmforge.data.packing import pack_sequences
 
         dataset = [
-            {"tokens": [1, 2, 3], "offset": 1},
-            {"tokens": [4, 5, 6], "offset": 1},
-            {"tokens": [7, 8, 9], "offset": 1},
+            {"input_ids": [1, 2, 3], "labels": [-100, 2, 3]},
+            {"input_ids": [4, 5, 6], "labels": [-100, 5, 6]},
+            {"input_ids": [7, 8, 9], "labels": [-100, 8, 9]},
         ]
         packed = pack_sequences(dataset, max_seq_length=32)
 
         # All 3 sequences (total 9 tokens) should fit in 1 bin (max=32)
         assert len(packed) == 1
-        assert len(packed[0].tokens) == 9
-        assert len(packed[0].offsets) == 3
+        assert len(packed[0].input_ids) == 9
+        assert len(packed[0].labels) == 9
 
     def test_pack_respects_max_seq_length(self):
         """No bin should exceed max_seq_length."""
         from lmforge.data.packing import pack_sequences
 
         dataset = [
-            {"tokens": list(range(10)), "offset": 3},
-            {"tokens": list(range(10)), "offset": 3},
-            {"tokens": list(range(10)), "offset": 3},
+            {"input_ids": list(range(10)), "labels": list(range(10))},
+            {"input_ids": list(range(10)), "labels": list(range(10))},
+            {"input_ids": list(range(10)), "labels": list(range(10))},
         ]
         packed = pack_sequences(dataset, max_seq_length=15)
 
         for ps in packed:
-            assert len(ps.tokens) <= 15
+            assert len(ps.input_ids) <= 15
 
     def test_pack_segment_ids_correct(self):
         """Segment IDs should identify which sequence each token belongs to."""
         from lmforge.data.packing import pack_sequences
 
         dataset = [
-            {"tokens": [1, 2, 3], "offset": 1},
-            {"tokens": [4, 5], "offset": 1},
+            {"input_ids": [1, 2, 3], "labels": [-100, 2, 3]},
+            {"input_ids": [4, 5], "labels": [-100, 5]},
         ]
         packed = pack_sequences(dataset, max_seq_length=32)
 
         assert len(packed) == 1
         ps = packed[0]
 
-        # First 3 tokens belong to segment 0, next 2 to segment 1
-        # (order may vary due to sort-by-length)
         seg_counts = {}
         for sid in ps.segment_ids:
             seg_counts[sid] = seg_counts.get(sid, 0) + 1
@@ -405,24 +403,25 @@ class TestSequencePacking:
         """Sequences longer than max_seq_length should be truncated."""
         from lmforge.data.packing import pack_sequences
 
-        dataset = [{"tokens": list(range(100)), "offset": 10}]
+        dataset = [{"input_ids": list(range(100)), "labels": list(range(100))}]
         packed = pack_sequences(dataset, max_seq_length=32)
 
         assert len(packed) == 1
-        assert len(packed[0].tokens) == 32
+        assert len(packed[0].input_ids) == 32
+        assert len(packed[0].labels) == 32
 
-    def test_pack_offsets_correct(self):
-        """Offsets should correctly track prompt_end and seq_end positions."""
+    def test_pack_labels_preserved(self):
+        """Labels should be preserved through packing."""
         from lmforge.data.packing import pack_sequences
 
         dataset = [
-            {"tokens": [10, 20, 30, 40, 50], "offset": 2},
+            {"input_ids": [10, 20, 30, 40, 50], "labels": [-100, -100, 30, 40, 50]},
         ]
         packed = pack_sequences(dataset, max_seq_length=32)
 
         assert len(packed) == 1
         ps = packed[0]
-        assert ps.offsets[0] == (2, 5)  # prompt_end=2, seq_end=5
+        assert ps.labels == [-100, -100, 30, 40, 50]
 
     def test_pack_empty_dataset(self):
         """Empty dataset should return no packed sequences."""
@@ -437,14 +436,14 @@ class TestSequencePacking:
 # =============================================================================
 
 class TestPackedBatching:
-    """Tests for packed batch iteration."""
+    """Tests for packed batch iteration (V2: input_ids + labels + segment_ids)."""
 
     def test_iterate_packed_batches_shapes(self):
-        """Packed batches should have correct shapes."""
+        """Packed batches should have correct shapes: (B,T) x3."""
         from lmforge.data.batching import iterate_packed_batches
 
         dataset = [
-            {"tokens": list(range(10)), "offset": 3}
+            {"input_ids": list(range(10)), "labels": list(range(10))}
             for _ in range(8)
         ]
 
@@ -455,20 +454,20 @@ class TestPackedBatching:
         batches = list(iterate_packed_batches(dataset, config))
         assert len(batches) > 0
 
-        for batch_tokens, segment_ids, offsets in batches:
-            B = batch_tokens.shape[0]
-            T = batch_tokens.shape[1]
+        for input_ids, labels, segment_ids in batches:
+            B = input_ids.shape[0]
+            T = input_ids.shape[1]
             assert B == 2
+            assert labels.shape == (B, T)
             assert segment_ids.shape == (B, T)
-            assert offsets.shape[2] == 2  # (prompt_end, seq_end)
 
     def test_iterate_packed_batches_padding(self):
-        """Padding positions should have segment_id = -1."""
+        """Padding positions should have segment_id = -1 and labels = -100."""
         from lmforge.data.batching import iterate_packed_batches
 
         dataset = [
-            {"tokens": [1, 2, 3], "offset": 1},
-            {"tokens": [4, 5], "offset": 1},
+            {"input_ids": [1, 2, 3], "labels": [-100, 2, 3]},
+            {"input_ids": [4, 5], "labels": [-100, 5]},
         ]
 
         config = MagicMock()
@@ -478,12 +477,14 @@ class TestPackedBatching:
         batches = list(iterate_packed_batches(dataset, config))
 
         if batches:
-            _, seg_ids, _ = batches[0]
-            mx.eval(seg_ids)
-            # Positions beyond actual tokens should be -1
+            _, labels, seg_ids = batches[0]
+            mx.eval(seg_ids, labels)
             seg_np = np.array(seg_ids)
-            # Check that some positions are -1 (padding)
+            labels_np = np.array(labels)
+            # Padding positions should be -1 for segment_ids
             assert (seg_np == -1).any()
+            # Padding positions should be -100 for labels
+            assert (labels_np == -100).any()
 
     def test_packing_config_default_false(self):
         """DataConfig.packing should default to False."""
@@ -505,7 +506,7 @@ class TestPackedBatching:
 # =============================================================================
 
 class TestPackedLoss:
-    """Tests for packed sequence loss computation."""
+    """Tests for packed sequence loss computation (V2: labels-based)."""
 
     def test_packed_loss_basic(self):
         """Packed loss should compute without errors."""
@@ -513,14 +514,13 @@ class TestPackedLoss:
 
         model = _make_tiny_model()
 
-        # Create a simple packed batch
-        batch = mx.array([[1, 2, 3, 4, 5, 6, 0, 0]], dtype=mx.int32)
-        # Two segments: [0,0,0] and [1,1,1], padding [-1,-1]
+        # Two segments packed together, padding at end
+        input_ids = mx.array([[1, 2, 3, 4, 5, 6, 0, 0]], dtype=mx.int32)
+        # Labels: -100 for prompt tokens + padding, real values for completion tokens
+        labels = mx.array([[-100, 2, 3, -100, 5, 6, -100, -100]], dtype=mx.int32)
         segment_ids = mx.array([[0, 0, 0, 1, 1, 1, -1, -1]], dtype=mx.int32)
-        # Offsets: seg 0 prompt_end=1 seq_end=3, seg 1 prompt_end=4 seq_end=6
-        offsets = mx.array([[[1, 3], [4, 6]]], dtype=mx.int32)
 
-        loss, ntoks = loss_fn_packed(model, batch, segment_ids, offsets)
+        loss, ntoks = loss_fn_packed(model, input_ids, labels, segment_ids)
         mx.eval(loss, ntoks)
 
         assert loss.item() > 0
@@ -532,22 +532,19 @@ class TestPackedLoss:
 
         model = _make_tiny_model()
 
-        # Two segments right next to each other
-        batch = mx.array([[1, 2, 3, 4, 5, 6]], dtype=mx.int32)
+        input_ids = mx.array([[1, 2, 3, 4, 5, 6]], dtype=mx.int32)
+        labels = mx.array([[1, 2, 3, 4, 5, 6]], dtype=mx.int32)  # All trainable
         segment_ids = mx.array([[0, 0, 0, 1, 1, 1]], dtype=mx.int32)
-        # No prompt masking (offset at start of each segment)
-        offsets = mx.array([[[0, 3], [3, 6]]], dtype=mx.int32)
 
-        loss, ntoks = loss_fn_packed(model, batch, segment_ids, offsets)
+        loss, ntoks = loss_fn_packed(model, input_ids, labels, segment_ids)
         mx.eval(loss, ntoks)
 
-        # ntoks should be 4: positions 1,2 in seg0 and positions 4,5 in seg1
-        # (position 0 is first token of seg0, position 3 is first token of seg1,
-        #  so those are inputs not targets in loss computation)
-        # Actually: inputs = batch[:, :-1], targets = batch[:, 1:]
+        # inputs = input_ids[:, :-1], targets = labels[:, 1:]
         # seg_in = [0,0,0,1,1], seg_out = [0,0,1,1,1]
         # same_seg = [T,T,F,T,T] (position 2: seg_in=0 != seg_out=1)
-        # So the boundary IS excluded. ntoks should be 4.
+        # targets != -100 = all True
+        # mask = same_seg & (targets != -100) & (seg_out >= 0) = [T,T,F,T,T]
+        # ntoks should be 4
         assert ntoks.item() == 4
 
     def test_packed_loss_excludes_padding(self):
@@ -556,14 +553,16 @@ class TestPackedLoss:
 
         model = _make_tiny_model()
 
-        batch = mx.array([[1, 2, 3, 0, 0, 0]], dtype=mx.int32)
+        input_ids = mx.array([[1, 2, 3, 0, 0, 0]], dtype=mx.int32)
+        labels = mx.array([[1, 2, 3, -100, -100, -100]], dtype=mx.int32)
         segment_ids = mx.array([[0, 0, 0, -1, -1, -1]], dtype=mx.int32)
-        offsets = mx.array([[[0, 3]]], dtype=mx.int32)
 
-        loss, ntoks = loss_fn_packed(model, batch, segment_ids, offsets)
+        loss, ntoks = loss_fn_packed(model, input_ids, labels, segment_ids)
         mx.eval(loss, ntoks)
 
-        # Only 2 tokens should contribute (positions 1,2 of seg0)
+        # Only 2 tokens: targets are labels[:, 1:] = [2, 3, -100, -100, -100]
+        # seg_in = [0, 0, 0, -1, -1], seg_out = [0, 0, -1, -1, -1]
+        # same_seg & seg_out>=0 = [T,T,F,F,F], mask with labels: [T,T,F,F,F]
         assert ntoks.item() == 2
 
     def test_packed_loss_gradients(self):
@@ -572,12 +571,12 @@ class TestPackedLoss:
 
         model = _make_tiny_model()
 
-        batch = mx.array([[1, 2, 3, 4, 5, 6]], dtype=mx.int32)
+        input_ids = mx.array([[1, 2, 3, 4, 5, 6]], dtype=mx.int32)
+        labels = mx.array([[1, 2, 3, 4, 5, 6]], dtype=mx.int32)
         segment_ids = mx.array([[0, 0, 0, 1, 1, 1]], dtype=mx.int32)
-        offsets = mx.array([[[0, 3], [3, 6]]], dtype=mx.int32)
 
         loss_and_grad = mx.value_and_grad(loss_fn_packed)
-        (loss, ntoks), grads = loss_and_grad(model, batch, segment_ids, offsets)
+        (loss, ntoks), grads = loss_and_grad(model, input_ids, labels, segment_ids)
         mx.eval(loss, ntoks, grads)
 
         assert loss.item() > 0

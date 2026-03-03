@@ -1,0 +1,42 @@
+id: writing-style
+name: Writing Style
+description: >
+  Train a model to write in a specific style. Upload text
+  samples of the desired writing style and the model will
+  learn to match it. Best for authors, bloggers, and content
+  creators who want "an AI that writes like me."
+category: sft
+training_type: sft
+data_format: text
+icon: Pen
+
+recommended_models:
+  - "Qwen/Qwen3-0.6B"
+  - "Qwen/Qwen3-1.7B"
+  - "Qwen/Qwen2.5-1.5B"
+  - "google/gemma-2-2b"
+
+auto_rules:
+  - "if system_memory_gb < 16: enable QLoRA + gradient_checkpointing"
+  - "if dataset_samples < 100: reduce num_iters to 300, warn about small dataset"
+  - "if dataset_samples > 5000: enable packing"
+
+config_template:
+  adapter:
+    preset: "all-linear"
+    rank: 32
+    scale: 64.0
+  data:
+    max_seq_length: 1024
+    mask_prompt: false
+  training:
+    optimizer: "adam"
+    learning_rate: 5.0e-5
+    num_iters: 500
+    batch_size: 2
+    steps_per_report: 10
+    steps_per_eval: 50
+    steps_per_save: 50
+    max_grad_norm: 1.0
+  runtime:
+    run_dir: "~/.lmforge/runs"

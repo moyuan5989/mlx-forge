@@ -44,6 +44,7 @@ lmforge prepare   --data FILE --model MODEL [--output DIR]
 lmforge train     --config FILE [--resume CHECKPOINT_DIR]
 lmforge generate  --model MODEL [--adapter DIR] [--prompt TEXT] [...]
 lmforge studio    [--host HOST] [--port PORT]
+lmforge data      list | catalog | download | import | inspect | stats | delete
 ```
 
 ---
@@ -59,8 +60,11 @@ These contracts are **immutable** and must be preserved in all future versions:
    - `optimizer.safetensors` (optimizer state)
    - `state.json` (step, epoch, trained_tokens, best_val_loss, learning_rate, rng_seed, schema_version)
 
-2. **Batch contract**: `(B, T)` token IDs + `(B, 2)` lengths `[prompt_offset, total_length]`
-   - Packed batches add optional `segment_ids: (B, T)` for cross-sequence masking
+2. **Batch contract (V2)**: `(B, T)` input_ids + `(B, T)` labels with `-100` masking
+   - Standard batches: `iterate_batches()` yields `(input_ids, labels)` — both `(B, T)` int32
+   - Packed batches: `iterate_packed_batches()` yields `(input_ids, labels, segment_ids)` — all `(B, T)` int32
+   - Preference batches: `iterate_preference_batches()` yields `(chosen_ids, chosen_labels, rejected_ids, rejected_labels)`
+   - Labels use `-100` for tokens excluded from loss (prompt tokens, padding, segment boundaries)
 
 3. **Config schema**: Pydantic v2 models with `extra="forbid"`
    - New fields must be optional with backward-compatible defaults
@@ -79,12 +83,17 @@ These contracts are **immutable** and must be preserved in all future versions:
        └── metrics.jsonl
    ```
 
-5. **Data cache format**:
+5. **Data storage format (V2)**:
    ```
-   ~/.lmforge/cache/preprocessed/{fingerprint}/
-   ├── meta.json
-   ├── shard_000.safetensors
-   └── shard_001.safetensors
+   ~/.lmforge/datasets/
+   ├── raw/{dataset_id}/           # Downloaded/imported datasets
+   │   ├── data.jsonl
+   │   └── meta.json
+   └── processed/{name}--{model}/  # Tokenized datasets (Arrow/datasets lib)
+       ├── dataset_info.json
+       ├── state.json
+       ├── data-00000-of-00001.arrow
+       └── meta.json
    ```
 
 ### Design Philosophy
@@ -104,9 +113,9 @@ These contracts are **immutable** and must be preserved in all future versions:
 ```
 lmforge/
 ├── adapters/           # LoRA targeting, application, fusing
-├── cli/                # 4 commands (prepare, train, generate, studio)
+├── cli/                # 5 commands (prepare, train, generate, studio, data)
 ├── config.py           # Pydantic config models
-├── data/               # Formats, preprocessing, caching, batching, packing
+├── data/               # Formats, preprocessing, backend, batching, packing, catalog, registry
 ├── inference/          # Generation engine, sampling, KV cache
 ├── models/             # Registry, loader, quantization
 │   ├── _base/          # Shared utilities (attention, RoPE, activations)
@@ -253,7 +262,7 @@ for it in range(start_step, num_iters + 1):
 
 ### Test Files
 - `test_config.py` — Config validation
-- `test_data.py` — Data pipeline
+- `test_data.py` — Data pipeline (batching, fingerprinting)
 - `test_adapters.py` — LoRA targeting and application
 - `test_model_loading.py` — Model loading and architecture
 - `test_resolve.py` — HF model resolution
@@ -264,6 +273,11 @@ for it in range(start_step, num_iters + 1):
 - `test_m11_studio.py` — Studio backend
 - `test_m12_frontend.py` — Studio frontend
 - `test_m13_integration.py` — Cross-feature integration
+- `test_labels.py` — Per-token label construction (chat, completions, text, preference)
+- `test_backend.py` — Arrow storage backend (save/load, metadata, fingerprints)
+- `test_catalog.py` — Dataset catalog, converters, registry
+- `test_v2_dpo.py` — DPO/preference training
+- `test_v2_studio.py` — V2 contracts and architectures
 
 ---
 
@@ -328,12 +342,17 @@ runtime:
 {"text": "..."}
 ```
 
+**Preference format** (DPO):
+```json
+{"chosen": [{"role": "user", "content": "..."}, {"role": "assistant", "content": "..."}], "rejected": [{"role": "user", "content": "..."}, {"role": "assistant", "content": "..."}]}
+```
+
 ---
 
 ## 7. Next Steps & Future Work
 
 ### Immediate Priorities
-- [ ] Update README with V1 features
+- [ ] Update README with V2 features
 - [ ] Add Studio user guide
 - [ ] Create example configs for QLoRA, packing, gradient checkpointing
 - [ ] Document Phi-3 OOM findings and memory optimization
@@ -348,17 +367,13 @@ runtime:
 - [ ] DoRA adapters (Magnitude-preserving LoRA)
 - [ ] Additional architectures:
   - DeepSeek-R1 / DeepSeek-V3 (if MoE support added)
-  - Phi-4
-  - Qwen2.5 / Qwen2.5-VL
 - [ ] Multi-dataset mixing with sampling strategies
 - [ ] Evaluation harness integration (lm-eval)
 - [ ] Native desktop app (Tauri wrapper for Studio)
-- [ ] DPO / RLHF training (different training paradigm)
 
 ### Known Limitations (By Design)
-V1 intentionally does NOT implement:
+V1/V2 intentionally does NOT implement:
 - Inference serving / REST API / OpenAI compatibility
-- DPO / RLHF / KTO training
 - Distributed training (Apple Silicon is single-GPU)
 - MoE models (Mixtral, DeepSeek V3)
 - Model conversion (HF ↔ MLX)
@@ -401,6 +416,7 @@ numpy>=1.24.0
 transformers>=4.35.0
 safetensors>=0.4.0
 huggingface-hub>=0.20.0
+datasets>=2.16.0
 ```
 
 ### Optional

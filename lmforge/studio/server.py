@@ -15,6 +15,7 @@ from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 from lmforge.studio.api import datasets, inference, models, runs, training
+from lmforge.studio.api import config_schema, data_library, memory, queue, recipes
 from lmforge.studio.services.metrics_watcher import MetricsWatcher
 
 
@@ -30,7 +31,7 @@ def create_app(runs_dir: str = "~/.lmforge/runs") -> FastAPI:
     app = FastAPI(
         title="LMForge Studio",
         description="Browser-based training UI for LMForge",
-        version="0.1.0",
+        version="2.0.0",
     )
 
     # CORS for local development
@@ -43,12 +44,20 @@ def create_app(runs_dir: str = "~/.lmforge/runs") -> FastAPI:
         allow_headers=["*"],
     )
 
-    # Mount REST API routers
+    # Mount REST API routers — V1
     app.include_router(runs.router)
     app.include_router(models.router)
     app.include_router(datasets.router)
     app.include_router(training.router)
     app.include_router(inference.router)
+
+    # Mount REST API routers — V2
+    app.include_router(recipes.router)
+    app.include_router(queue.router)
+    app.include_router(memory.router)
+    app.include_router(config_schema.router)
+    app.include_router(models.router_v2)
+    app.include_router(data_library.router)
 
     # Configure services with the runs directory
     from lmforge.studio.services.run_service import RunService

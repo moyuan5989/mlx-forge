@@ -1,0 +1,46 @@
+id: preference-dpo
+name: Preference Alignment (DPO)
+description: >
+  Align a model's responses with human preferences using DPO
+  (Direct Preference Optimization). Upload pairs of preferred
+  and rejected responses. The model learns to generate responses
+  more like the preferred ones. Uses SimPO by default (no
+  reference model needed, saving ~2x memory).
+category: dpo
+training_type: dpo
+data_format: preference
+icon: ThumbsUp
+
+recommended_models:
+  - "Qwen/Qwen3-1.7B"
+  - "Qwen/Qwen3-4B"
+  - "Qwen/Qwen2.5-3B"
+  - "meta-llama/Llama-3.1-8B"
+
+auto_rules:
+  - "if system_memory_gb < 16: enable QLoRA + gradient_checkpointing + batch_size=1"
+  - "if dataset_samples < 500: reduce num_iters to 500"
+
+config_template:
+  adapter:
+    preset: "attention-qv"
+    rank: 16
+    scale: 32.0
+  data:
+    max_seq_length: 2048
+    mask_prompt: true
+  training:
+    training_type: "dpo"
+    dpo_beta: 0.1
+    dpo_reference_free: true
+    optimizer: "adam"
+    learning_rate: 5.0e-6
+    num_iters: 500
+    batch_size: 2
+    steps_per_report: 10
+    steps_per_eval: 50
+    steps_per_save: 50
+    max_grad_norm: 1.0
+    grad_accumulation_steps: 4
+  runtime:
+    run_dir: "~/.lmforge/runs"

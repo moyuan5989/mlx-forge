@@ -30,3 +30,18 @@ def list_models():
 def list_supported():
     """List supported model architectures."""
     return get_model_service().list_supported_architectures()
+
+
+# ── V2: Model Library ─────────────────────────────────────────────────────────
+
+from lmforge.studio.services.model_library_service import ModelLibraryService
+
+router_v2 = APIRouter(prefix="/api/v2/models", tags=["models-v2"])
+
+_library_service = ModelLibraryService()
+
+
+@router_v2.get("/library")
+def list_library():
+    """List curated model catalog with memory estimates and download status."""
+    return _library_service.list_library()

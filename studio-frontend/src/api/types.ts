@@ -78,6 +78,9 @@ export interface Dataset {
   template_hash?: string
   tokenizer_hash?: string
   data_hash?: string
+  source_path?: string
+  model_id?: string
+  created_at?: string
 }
 
 export interface ActiveTraining {
@@ -122,3 +125,116 @@ export interface WsStoppedMessage {
 
 export type WsTrainingMessage = WsMetricMessage | WsErrorMessage | WsStoppedMessage
 export type WsInferenceMessage = WsTokenMessage | WsDoneMessage | WsErrorMessage
+
+// V2 Types
+
+export interface Recipe {
+  id: string
+  name: string
+  description: string
+  category: 'sft' | 'dpo'
+  training_type: 'sft' | 'dpo'
+  data_format: 'chat' | 'completions' | 'text' | 'preference'
+  recommended_models: string[]
+  config_template: Record<string, unknown>
+  auto_rules: string[]
+  icon: string
+}
+
+export interface HardwareInfo {
+  total_memory_gb: number
+  training_budget_gb: number
+  chip_name: string
+}
+
+export interface MemoryBarSegment {
+  label: string
+  gb: number
+  color: string
+}
+
+export interface MemoryEstimateResult {
+  base_weights_gb: number
+  lora_overhead_gb: number
+  optimizer_state_gb: number
+  peak_activations_gb: number
+  mlx_overhead_gb: number
+  total_gb: number
+  budget_gb: number
+  fits: boolean
+  bar_segments: MemoryBarSegment[]
+}
+
+export interface CompatibleModel {
+  model_id: string
+  display_name: string
+  num_params_b: number
+  fp16: { total_gb: number; fits: boolean }
+  qlora_4bit: { total_gb: number; fits: boolean }
+  recommended: boolean
+}
+
+export interface LibraryModel {
+  model_id: string
+  display_name: string
+  num_params_b: number
+  architecture: string
+  hidden_dim: number
+  num_layers: number
+  vocab_size: number
+  downloaded: boolean
+  fp16: { total_gb: number; fits: boolean }
+  qlora_4bit: { total_gb: number; fits: boolean }
+  recommended: boolean
+}
+
+export interface QueueJob {
+  id: string
+  config: Record<string, unknown>
+  status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled'
+  created_at: number
+  started_at: number | null
+  completed_at: number | null
+  run_id: string | null
+  error: string | null
+  position: number
+}
+
+export interface QueueStats {
+  queued: number
+  running: number
+  completed: number
+  failed: number
+  cancelled: number
+  max_concurrent: number
+}
+
+// ── Data Library Types ──
+
+export interface CatalogDataset {
+  id: string
+  source: string
+  display_name: string
+  category: string
+  format: string
+  description: string
+  license: string
+  total_samples: number
+  avg_tokens: number
+  tags: string[]
+  downloaded: boolean
+}
+
+export interface DownloadedDataset {
+  id: string
+  display_name: string
+  format: string
+  num_samples: number
+  source: string
+  category: string
+  license: string
+  tags: string[]
+  origin: string
+  path: string
+  downloaded: boolean
+}

@@ -1,4 +1,4 @@
-"""CLI entry point for LMForge v0.
+"""CLI entry point for LMForge.
 
 Thin wrapper that parses args and delegates to library functions.
 No business logic in CLI code.
@@ -25,7 +25,7 @@ def build_parser() -> argparse.ArgumentParser:
     # --- prepare ---
     prepare_parser = subparsers.add_parser(
         "prepare",
-        help="Pre-tokenize a dataset and write a safetensors cache to disk",
+        help="Pre-tokenize a dataset and save for training",
     )
     prepare_parser.add_argument(
         "--data", required=True, help="Path to JSONL data file"
@@ -36,7 +36,12 @@ def build_parser() -> argparse.ArgumentParser:
     prepare_parser.add_argument(
         "--output",
         default=None,
-        help="Output cache directory (default: ~/.lmforge/cache/preprocessed/)",
+        help="Ignored (kept for compat). Storage is in ~/.lmforge/datasets/",
+    )
+    prepare_parser.add_argument(
+        "--name",
+        default=None,
+        help="Dataset name for the registry (default: derived from filename)",
     )
     prepare_parser.add_argument(
         "--max-seq-length",
@@ -123,6 +128,60 @@ def build_parser() -> argparse.ArgumentParser:
         help="Trust remote code when loading tokenizer",
     )
 
+    # --- data ---
+    data_parser = subparsers.add_parser(
+        "data",
+        help="Dataset management: catalog, download, import, inspect",
+    )
+    data_subs = data_parser.add_subparsers(dest="data_command", help="Data subcommands")
+
+    # data list
+    data_subs.add_parser("list", help="List downloaded datasets")
+
+    # data catalog
+    cat_parser = data_subs.add_parser("catalog", help="Show curated dataset catalog")
+    cat_parser.add_argument(
+        "--category",
+        default=None,
+        help="Filter by category (general, code, math, conversation, reasoning, safety, domain)",
+    )
+
+    # data download
+    dl_parser = data_subs.add_parser("download", help="Download a dataset from the catalog")
+    dl_parser.add_argument("dataset_id", help="Dataset ID from the catalog")
+    dl_parser.add_argument(
+        "--max-samples",
+        type=int,
+        default=None,
+        help="Limit number of samples (useful for Apple Silicon)",
+    )
+
+    # data import
+    imp_parser = data_subs.add_parser("import", help="Import a local JSONL file")
+    imp_parser.add_argument("file", help="Path to JSONL file")
+    imp_parser.add_argument("--name", required=True, help="Name for the dataset")
+    imp_parser.add_argument(
+        "--format",
+        default=None,
+        choices=["chat", "completions", "text", "preference"],
+        help="Override auto-detected format",
+    )
+
+    # data inspect
+    insp_parser = data_subs.add_parser("inspect", help="Preview samples from a dataset")
+    insp_parser.add_argument("name", help="Dataset name")
+    insp_parser.add_argument(
+        "--n", type=int, default=5, help="Number of samples to show (default: 5)"
+    )
+
+    # data stats
+    stats_parser = data_subs.add_parser("stats", help="Show dataset statistics")
+    stats_parser.add_argument("name", help="Dataset name")
+
+    # data delete
+    del_parser = data_subs.add_parser("delete", help="Delete a downloaded dataset")
+    del_parser.add_argument("name", help="Dataset name")
+
     # --- studio ---
     studio_parser = subparsers.add_parser(
         "studio",
@@ -163,6 +222,10 @@ def main(argv: list[str] | None = None) -> None:
         from lmforge.cli.generate_cmd import run_generate
 
         run_generate(args)
+    elif args.command == "data":
+        from lmforge.cli.data_cmd import run_data
+
+        run_data(args)
     elif args.command == "studio":
         from lmforge.cli.studio_cmd import run_studio
 

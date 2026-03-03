@@ -1,4 +1,7 @@
-"""Sort-by-length, fixed-batch, pad-to-32 iterator for LMForge v0."""
+"""Sort-by-length, fixed-batch, pad-to-32 iterator for LMForge V2.
+
+Yields (input_ids, labels) tuples with -100 label masking.
+"""
 
 from __future__ import annotations
 
@@ -6,24 +9,35 @@ import mlx.core as mx
 import numpy as np
 
 
-def iterate_batches(dataset, config):
-    """Yield (batch_tokens, lengths) tuples per V0_DESIGN_FREEZE.md §2.2.
+def _get_length(sample, key="input_ids"):
+    """Get length of a sample's token sequence."""
+    tokens = sample[key]
+    if hasattr(tokens, "__len__"):
+        return len(tokens)
+    if hasattr(tokens, "size"):
+        return tokens.size
+    return len(list(tokens))
 
-    batch_tokens: mx.array, dtype=int32, shape=(B, T)
-    lengths:      mx.array, dtype=int32, shape=(B, 2)
+
+def _to_list(tokens):
+    """Convert tokens to a plain list."""
+    if hasattr(tokens, "tolist"):
+        return tokens.tolist()
+    elif isinstance(tokens, list):
+        return tokens
+    else:
+        return list(tokens)
+
+
+def iterate_batches(dataset, config):
+    """Yield (input_ids, labels) tuples.
+
+    input_ids: mx.array, dtype=int32, shape=(B, T)
+    labels:    mx.array, dtype=int32, shape=(B, T)
 
     - B is config.training.batch_size
     - T is padded to nearest multiple of 32, capped at config.data.max_seq_length
-    - lengths[:, 0] is prompt offset, lengths[:, 1] is total unpadded length
-    - Padding value is 0
-
-    Steps:
-    1. Sort samples by length (descending) for efficient batching
-    2. Group into fixed-size batches
-    3. Pad to nearest multiple of 32 within each batch
-
-    Note: This iterates once through the dataset (one epoch). Use itertools.cycle
-    in the training loop to repeat for multiple epochs.
+    - input_ids padded with 0, labels padded with -100
     """
     batch_size = config.training.batch_size
     max_seq_length = config.data.max_seq_length
@@ -31,7 +45,7 @@ def iterate_batches(dataset, config):
     # Sort samples by length (descending) for efficient padding
     sorted_samples = sorted(
         dataset,
-        key=lambda s: len(s["tokens"]) if hasattr(s["tokens"], "__len__") else s["tokens"].size,
+        key=lambda s: _get_length(s, "input_ids"),
         reverse=True,
     )
 
@@ -39,63 +53,44 @@ def iterate_batches(dataset, config):
     for batch_start in range(0, len(sorted_samples), batch_size):
         batch_samples = sorted_samples[batch_start : batch_start + batch_size]
 
-        # Skip incomplete final batch if it's too small
         if len(batch_samples) < batch_size:
             continue
 
         # Find max length in this batch
-        max_len_in_batch = max(
-            len(s["tokens"]) if hasattr(s["tokens"], "__len__") else s["tokens"].size
-            for s in batch_samples
-        )
+        max_len_in_batch = max(_get_length(s, "input_ids") for s in batch_samples)
 
         # Pad to nearest multiple of 32, capped at max_seq_length
         padded_length = _round_up_to_multiple(max_len_in_batch, 32)
         padded_length = min(padded_length, max_seq_length)
 
         # Build batch arrays
-        batch_tokens = np.zeros((batch_size, padded_length), dtype=np.int32)
-        batch_lengths = np.zeros((batch_size, 2), dtype=np.int32)
+        batch_input_ids = np.zeros((batch_size, padded_length), dtype=np.int32)
+        batch_labels = np.full((batch_size, padded_length), -100, dtype=np.int32)
 
         for i, sample in enumerate(batch_samples):
-            tokens = sample["tokens"]
-            offset = sample["offset"]
-
-            # Convert to numpy if needed (for mx.array)
-            if hasattr(tokens, "tolist"):
-                tokens = tokens.tolist()
-            elif hasattr(tokens, "__iter__"):
-                tokens = list(tokens)
+            input_ids = _to_list(sample["input_ids"])
+            labels = _to_list(sample["labels"])
 
             # Truncate if needed
-            if len(tokens) > max_seq_length:
-                tokens = tokens[:max_seq_length]
+            if len(input_ids) > max_seq_length:
+                input_ids = input_ids[:max_seq_length]
+                labels = labels[:max_seq_length]
 
-            # Copy tokens into batch
-            batch_tokens[i, : len(tokens)] = tokens
+            batch_input_ids[i, :len(input_ids)] = input_ids
+            batch_labels[i, :len(labels)] = labels
 
-            # Set lengths: [prompt_offset, total_unpadded_length]
-            batch_lengths[i, 0] = min(offset, len(tokens))
-            batch_lengths[i, 1] = len(tokens)
-
-        # Convert to MLX arrays
-        batch_tokens_mx = mx.array(batch_tokens, dtype=mx.int32)
-        batch_lengths_mx = mx.array(batch_lengths, dtype=mx.int32)
-
-        yield batch_tokens_mx, batch_lengths_mx
+        yield (
+            mx.array(batch_input_ids, dtype=mx.int32),
+            mx.array(batch_labels, dtype=mx.int32),
+        )
 
 
 def iterate_packed_batches(dataset, config):
-    """Yield (batch_tokens, segment_ids, offsets) tuples for packed training.
+    """Yield (input_ids, labels, segment_ids) tuples for packed training.
 
-    Packs multiple sequences per row to eliminate padding waste.
-
-    batch_tokens:  mx.array, dtype=int32, shape=(B, T)
-    segment_ids:   mx.array, dtype=int32, shape=(B, T)  — segment index per token, -1 for padding
-    offsets:       mx.array, dtype=int32, shape=(B, max_segments, 2)  — (prompt_end, seq_end) per segment
-
-    Note: This iterates once through the packed dataset. Use itertools.cycle
-    in the training loop to repeat for multiple epochs.
+    input_ids:   mx.array, dtype=int32, shape=(B, T)
+    labels:      mx.array, dtype=int32, shape=(B, T)
+    segment_ids: mx.array, dtype=int32, shape=(B, T)  — segment index per token, -1 for padding
     """
     from lmforge.data.packing import pack_sequences
 
@@ -104,37 +99,94 @@ def iterate_packed_batches(dataset, config):
 
     packed = pack_sequences(dataset, max_seq_length)
 
-    # Group packed sequences into batches
     for batch_start in range(0, len(packed), batch_size):
         batch_packed = packed[batch_start : batch_start + batch_size]
 
         if len(batch_packed) < batch_size:
             continue
 
-        # Find max token length and max segments in this batch
-        max_len_in_batch = max(len(p.tokens) for p in batch_packed)
-        max_segments = max(len(p.offsets) for p in batch_packed)
+        max_len_in_batch = max(len(p.input_ids) for p in batch_packed)
 
         padded_length = _round_up_to_multiple(max_len_in_batch, 32)
         padded_length = min(padded_length, max_seq_length)
 
-        batch_tokens = np.zeros((batch_size, padded_length), dtype=np.int32)
+        batch_input_ids = np.zeros((batch_size, padded_length), dtype=np.int32)
+        batch_labels = np.full((batch_size, padded_length), -100, dtype=np.int32)
         batch_seg_ids = np.full((batch_size, padded_length), -1, dtype=np.int32)
-        batch_offsets = np.zeros((batch_size, max_segments, 2), dtype=np.int32)
 
         for i, ps in enumerate(batch_packed):
-            tlen = min(len(ps.tokens), padded_length)
-            batch_tokens[i, :tlen] = ps.tokens[:tlen]
+            tlen = min(len(ps.input_ids), padded_length)
+            batch_input_ids[i, :tlen] = ps.input_ids[:tlen]
+            batch_labels[i, :tlen] = ps.labels[:tlen]
             batch_seg_ids[i, :tlen] = ps.segment_ids[:tlen]
 
-            for j, (prompt_end, seq_end) in enumerate(ps.offsets):
-                batch_offsets[i, j, 0] = prompt_end
-                batch_offsets[i, j, 1] = min(seq_end, padded_length)
+        yield (
+            mx.array(batch_input_ids, dtype=mx.int32),
+            mx.array(batch_labels, dtype=mx.int32),
+            mx.array(batch_seg_ids, dtype=mx.int32),
+        )
+
+
+def iterate_preference_batches(dataset, config):
+    """Yield (chosen_ids, chosen_labels, rejected_ids, rejected_labels) tuples.
+
+    For DPO training with preference pairs.
+    All arrays are mx.array, dtype=int32, shape=(B, T).
+    chosen/rejected labels padded with -100.
+    """
+    batch_size = config.training.batch_size
+    max_seq_length = config.data.max_seq_length
+
+    # Sort by max of chosen/rejected length (descending)
+    sorted_samples = sorted(
+        dataset,
+        key=lambda s: max(
+            _get_length(s, "chosen_input_ids"),
+            _get_length(s, "rejected_input_ids"),
+        ),
+        reverse=True,
+    )
+
+    for batch_start in range(0, len(sorted_samples), batch_size):
+        batch_samples = sorted_samples[batch_start : batch_start + batch_size]
+
+        if len(batch_samples) < batch_size:
+            continue
+
+        # Find max length across both chosen and rejected
+        max_len = 0
+        for s in batch_samples:
+            for key in ("chosen_input_ids", "rejected_input_ids"):
+                max_len = max(max_len, _get_length(s, key))
+
+        padded_length = _round_up_to_multiple(max_len, 32)
+        padded_length = min(padded_length, max_seq_length)
+
+        chosen_ids = np.zeros((batch_size, padded_length), dtype=np.int32)
+        chosen_labels = np.full((batch_size, padded_length), -100, dtype=np.int32)
+        rejected_ids = np.zeros((batch_size, padded_length), dtype=np.int32)
+        rejected_labels = np.full((batch_size, padded_length), -100, dtype=np.int32)
+
+        for i, sample in enumerate(batch_samples):
+            for ids_key, labels_key, out_ids, out_labels in [
+                ("chosen_input_ids", "chosen_labels", chosen_ids, chosen_labels),
+                ("rejected_input_ids", "rejected_labels", rejected_ids, rejected_labels),
+            ]:
+                ids = _to_list(sample[ids_key])
+                lbls = _to_list(sample[labels_key])
+
+                if len(ids) > max_seq_length:
+                    ids = ids[:max_seq_length]
+                    lbls = lbls[:max_seq_length]
+
+                out_ids[i, :len(ids)] = ids
+                out_labels[i, :len(lbls)] = lbls
 
         yield (
-            mx.array(batch_tokens, dtype=mx.int32),
-            mx.array(batch_seg_ids, dtype=mx.int32),
-            mx.array(batch_offsets, dtype=mx.int32),
+            mx.array(chosen_ids, dtype=mx.int32),
+            mx.array(chosen_labels, dtype=mx.int32),
+            mx.array(rejected_ids, dtype=mx.int32),
+            mx.array(rejected_labels, dtype=mx.int32),
         )
 
 

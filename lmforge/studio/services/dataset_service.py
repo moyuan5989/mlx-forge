@@ -1,6 +1,6 @@
 """Dataset cache discovery and management.
 
-Scans ~/.lmforge/cache/preprocessed/*/meta.json for cached datasets.
+V2: Scans ~/.lmforge/datasets/processed/*/meta.json for tokenized datasets.
 """
 
 from __future__ import annotations
@@ -10,23 +10,20 @@ import shutil
 from pathlib import Path
 from typing import Optional
 
-
 class DatasetService:
-    """Discovers and manages preprocessed dataset caches."""
+    """Discovers and manages processed (tokenized) datasets."""
 
-    def __init__(self, cache_dir: str = "~/.lmforge/cache/preprocessed"):
-        self.cache_dir = Path(cache_dir).expanduser()
+    def __init__(self, datasets_dir: str = "~/.lmforge/datasets"):
+        self.datasets_dir = Path(datasets_dir).expanduser()
 
     def list_datasets(self) -> list[dict]:
-        """List all cached datasets.
-
-        Returns list of dicts with dataset metadata from meta.json.
-        """
-        if not self.cache_dir.exists():
+        """List all processed (tokenized) datasets."""
+        processed_dir = self.datasets_dir / "processed"
+        if not processed_dir.exists():
             return []
 
-        datasets = []
-        for entry in sorted(self.cache_dir.iterdir()):
+        results = []
+        for entry in sorted(processed_dir.iterdir()):
             if not entry.is_dir():
                 continue
             meta_path = entry / "meta.json"
@@ -35,39 +32,41 @@ class DatasetService:
             try:
                 with open(meta_path) as f:
                     meta = json.load(f)
-                meta["fingerprint"] = entry.name
+                meta["name"] = entry.name
                 meta["path"] = str(entry)
-                datasets.append(meta)
+                results.append(meta)
             except Exception:
                 continue
-        return datasets
+        return results
 
-    def get_dataset(self, fingerprint: str) -> Optional[dict]:
-        """Get metadata for a specific cached dataset.
+    def get_dataset(self, name: str) -> Optional[dict]:
+        """Get metadata for a specific processed dataset.
 
         Args:
-            fingerprint: The dataset fingerprint (directory name).
-
-        Returns:
-            Dict with meta.json contents + fingerprint, or None.
+            name: The dataset directory name (e.g., "train--Qwen--Qwen3-0.6B").
         """
-        cache_path = self.cache_dir / fingerprint
-        meta_path = cache_path / "meta.json"
+        processed_dir = self.datasets_dir / "processed"
+        if not processed_dir.exists():
+            return None
+
+        entry = processed_dir / name
+        meta_path = entry / "meta.json"
         if not meta_path.exists():
             return None
+
         try:
             with open(meta_path) as f:
                 meta = json.load(f)
-            meta["fingerprint"] = fingerprint
-            meta["path"] = str(cache_path)
+            meta["name"] = name
+            meta["path"] = str(entry)
             return meta
         except Exception:
             return None
 
-    def delete_dataset(self, fingerprint: str) -> bool:
-        """Delete a cached dataset. Returns True if deleted."""
-        cache_path = self.cache_dir / fingerprint
-        if not cache_path.exists():
+    def delete_dataset(self, name: str) -> bool:
+        """Delete a processed dataset. Returns True if deleted."""
+        entry = self.datasets_dir / "processed" / name
+        if not entry.exists():
             return False
-        shutil.rmtree(cache_path)
+        shutil.rmtree(entry)
         return True

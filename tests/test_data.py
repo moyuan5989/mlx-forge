@@ -1,4 +1,4 @@
-"""Tests for data pipeline (M2)."""
+"""Tests for data pipeline (V2 — per-token labels)."""
 
 from __future__ import annotations
 
@@ -8,7 +8,6 @@ from pathlib import Path
 import pytest
 
 from lmforge.data.batching import iterate_batches
-from lmforge.data.cache import check_cache, compute_fingerprint, read_cache, write_cache
 from lmforge.data.formats import detect_format, validate_samples
 
 
@@ -40,7 +39,6 @@ class TestFormatDetection:
 class TestFormatValidation:
     def test_validate_chat_samples(self):
         """Test validation of chat format samples."""
-        # Valid samples
         valid_samples = [
             {"messages": [{"role": "user", "content": "Hello"}]},
             {"messages": [{"role": "user", "content": "Hi"}, {"role": "assistant", "content": "Hello!"}]},
@@ -48,18 +46,15 @@ class TestFormatValidation:
         errors = validate_samples(valid_samples, "chat")
         assert len(errors) == 0
 
-        # Invalid: missing messages
         invalid_samples = [{"text": "wrong format"}]
         errors = validate_samples(invalid_samples, "chat")
         assert len(errors) > 0
         assert "messages" in errors[0].lower()
 
-        # Invalid: messages not a list
         invalid_samples = [{"messages": "not a list"}]
         errors = validate_samples(invalid_samples, "chat")
         assert len(errors) > 0
 
-        # Invalid: message missing role
         invalid_samples = [{"messages": [{"content": "Hello"}]}]
         errors = validate_samples(invalid_samples, "chat")
         assert len(errors) > 0
@@ -67,18 +62,15 @@ class TestFormatValidation:
 
     def test_validate_completions_samples(self):
         """Test validation of completions format samples."""
-        # Valid
         valid_samples = [{"prompt": "Hello", "completion": "Hi!"}]
         errors = validate_samples(valid_samples, "completions")
         assert len(errors) == 0
 
-        # Missing prompt
         invalid_samples = [{"completion": "Hi!"}]
         errors = validate_samples(invalid_samples, "completions")
         assert len(errors) > 0
         assert "prompt" in errors[0].lower()
 
-        # Missing completion
         invalid_samples = [{"prompt": "Hello"}]
         errors = validate_samples(invalid_samples, "completions")
         assert len(errors) > 0
@@ -86,26 +78,24 @@ class TestFormatValidation:
 
     def test_validate_text_samples(self):
         """Test validation of text format samples."""
-        # Valid
         valid_samples = [{"text": "Sample text"}]
         errors = validate_samples(valid_samples, "text")
         assert len(errors) == 0
 
-        # Missing text
         invalid_samples = [{"prompt": "wrong"}]
         errors = validate_samples(invalid_samples, "text")
         assert len(errors) > 0
         assert "text" in errors[0].lower()
 
 
-class TestCacheFingerprinting:
+class TestFingerprinting:
     def test_fingerprint_format(self, tmp_dir):
         """Test that fingerprint has correct format."""
-        # Create a simple JSONL file
+        from lmforge.data.backend import compute_fingerprint
+
         data_file = tmp_dir / "test.jsonl"
         data_file.write_text('{"text": "sample"}\n')
 
-        # Mock tokenizer
         class MockTokenizer:
             def get_vocab(self):
                 return {"a": 0, "b": 1}
@@ -119,6 +109,8 @@ class TestCacheFingerprinting:
 
     def test_same_inputs_same_fingerprint(self, tmp_dir):
         """Test that same inputs produce same fingerprint."""
+        from lmforge.data.backend import compute_fingerprint
+
         data_file = tmp_dir / "test.jsonl"
         data_file.write_text('{"text": "sample"}\n')
 
@@ -135,6 +127,8 @@ class TestCacheFingerprinting:
 
     def test_different_data_different_fingerprint(self, tmp_dir):
         """Test that different data produces different fingerprint."""
+        from lmforge.data.backend import compute_fingerprint
+
         file1 = tmp_dir / "test1.jsonl"
         file1.write_text('{"text": "sample1"}\n')
 
@@ -153,57 +147,16 @@ class TestCacheFingerprinting:
         assert fp1 != fp2
 
 
-class TestCaching:
-    def test_write_and_read_cache(self, tmp_dir):
-        """Test writing and reading cache."""
-        cache_dir = str(tmp_dir)
-        fingerprint = "sha256:test123"
-        tokenized_samples = [
-            {"tokens": [1, 2, 3, 4], "offset": 0},
-            {"tokens": [5, 6, 7], "offset": 2},
-        ]
-
-        # Write cache
-        meta = write_cache(cache_dir, fingerprint, tokenized_samples, "text")
-
-        assert meta["num_samples"] == 2
-        assert meta["total_tokens"] == 7
-        assert meta["max_length"] == 4
-        assert meta["min_length"] == 3
-
-        # Read cache
-        loaded = read_cache(cache_dir, fingerprint)
-        assert len(loaded) == 2
-        assert loaded[0]["offset"] == 0
-        assert loaded[1]["offset"] == 2
-
-    def test_check_cache(self, tmp_dir):
-        """Test cache checking."""
-        cache_dir = str(tmp_dir)
-        fingerprint = "sha256:test456"
-
-        # No cache yet
-        assert not check_cache(cache_dir, fingerprint)
-
-        # Write cache
-        tokenized_samples = [{"tokens": [1, 2, 3], "offset": 0}]
-        write_cache(cache_dir, fingerprint, tokenized_samples, "text")
-
-        # Cache now exists
-        assert check_cache(cache_dir, fingerprint)
-
-
 class TestBatching:
     def test_batch_shapes_match_contract(self, sample_config_dict):
-        """Test that batch shapes match V0_DESIGN_FREEZE.md §2.2 contract."""
+        """Test that batch shapes match V2 contract: (B, T) input_ids + (B, T) labels."""
         from lmforge.config import TrainingConfig
 
-        # Create mock dataset
         dataset = [
-            {"tokens": [1, 2, 3, 4, 5], "offset": 0},
-            {"tokens": [6, 7, 8, 9], "offset": 2},
-            {"tokens": [10, 11, 12], "offset": 0},
-            {"tokens": [13, 14, 15, 16], "offset": 1},
+            {"input_ids": [1, 2, 3, 4, 5], "labels": [-100, -100, 3, 4, 5]},
+            {"input_ids": [6, 7, 8, 9], "labels": [-100, -100, 8, 9]},
+            {"input_ids": [10, 11, 12], "labels": [10, 11, 12]},
+            {"input_ids": [13, 14, 15, 16], "labels": [-100, 14, 15, 16]},
         ]
 
         config = TrainingConfig(**sample_config_dict)
@@ -211,43 +164,56 @@ class TestBatching:
 
         assert len(batches) == 1  # 4 samples, batch_size=4
 
-        batch_tokens, lengths = batches[0]
+        input_ids, labels = batches[0]
 
-        # Check shapes
-        assert batch_tokens.shape == (config.training.batch_size, batch_tokens.shape[1])
-        assert lengths.shape == (config.training.batch_size, 2)
+        # Check shapes: both (B, T)
+        assert input_ids.shape == (config.training.batch_size, input_ids.shape[1])
+        assert labels.shape == (config.training.batch_size, labels.shape[1])
+        assert input_ids.shape == labels.shape
 
         # Check dtypes
-        assert "int32" in str(batch_tokens.dtype)
-        assert "int32" in str(lengths.dtype)
+        assert "int32" in str(input_ids.dtype)
+        assert "int32" in str(labels.dtype)
 
-        # Check lengths array structure
-        for i in range(config.training.batch_size):
-            prompt_offset = lengths[i, 0].item()
-            total_length = lengths[i, 1].item()
-            assert prompt_offset >= 0
-            assert total_length > 0
-            assert prompt_offset <= total_length
+    def test_labels_padded_with_minus_100(self, sample_config_dict):
+        """Labels should be padded with -100 (not 0)."""
+        from lmforge.config import TrainingConfig
+        import numpy as np
+
+        dataset = [
+            {"input_ids": [1, 2, 3], "labels": [1, 2, 3]},
+            {"input_ids": [4, 5, 6, 7, 8], "labels": [-100, -100, 6, 7, 8]},
+            {"input_ids": [9, 10], "labels": [9, 10]},
+            {"input_ids": [11, 12, 13, 14], "labels": [-100, 12, 13, 14]},
+        ]
+
+        config = TrainingConfig(**sample_config_dict)
+        batches = list(iterate_batches(dataset, config))
+        _, labels = batches[0]
+
+        labels_np = np.array(labels)
+        # Padding positions should be -100
+        # Shortest sequence is length 2, padded to 32
+        # So positions 2+ in that row should be -100
+        assert (labels_np[:, -1] == -100).all()  # Last column is all padding
 
     def test_padding_to_multiple_of_32(self, sample_config_dict):
         """Test that sequences are padded to nearest multiple of 32."""
         from lmforge.config import TrainingConfig
 
-        # Create dataset with length 37 (should pad to 64)
         dataset = [
-            {"tokens": [1] * 37, "offset": 0},
-            {"tokens": [2] * 35, "offset": 0},
-            {"tokens": [3] * 30, "offset": 0},
-            {"tokens": [4] * 32, "offset": 0},
+            {"input_ids": [1] * 37, "labels": [1] * 37},
+            {"input_ids": [2] * 35, "labels": [2] * 35},
+            {"input_ids": [3] * 30, "labels": [3] * 30},
+            {"input_ids": [4] * 32, "labels": [4] * 32},
         ]
 
         config = TrainingConfig(**sample_config_dict)
         batches = list(iterate_batches(dataset, config))
 
-        batch_tokens, _ = batches[0]
-        T = batch_tokens.shape[1]
+        input_ids, _ = batches[0]
+        T = input_ids.shape[1]
 
-        # Should be padded to 64 (next multiple of 32 after 37)
         assert T % 32 == 0
         assert T >= 37
-        assert T == 64  # Exactly 64 for max_len=37
+        assert T == 64  # Next multiple of 32 after 37

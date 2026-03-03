@@ -5,9 +5,10 @@ from __future__ import annotations
 from typing import Literal
 
 
-def detect_format(samples: list[dict]) -> Literal["chat", "completions", "text"]:
+def detect_format(samples: list[dict]) -> Literal["chat", "completions", "text", "preference"]:
     """Auto-detect dataset format from the first sample's keys.
 
+    - Has "chosen" and "rejected" -> preference format (DPO)
     - Has "messages" -> chat format
     - Has "prompt" and "completion" -> completions format
     - Has "text" -> text format
@@ -19,7 +20,9 @@ def detect_format(samples: list[dict]) -> Literal["chat", "completions", "text"]
     first_sample = samples[0]
     keys = set(first_sample.keys())
 
-    if "messages" in keys:
+    if "chosen" in keys and "rejected" in keys:
+        return "preference"
+    elif "messages" in keys:
         return "chat"
     elif "prompt" in keys and "completion" in keys:
         return "completions"
@@ -28,7 +31,7 @@ def detect_format(samples: list[dict]) -> Literal["chat", "completions", "text"]
     else:
         raise ValueError(
             f"Unknown dataset format. Expected 'messages', 'prompt'+'completion', "
-            f"or 'text' keys. Found keys: {sorted(keys)}"
+            f"'text', or 'chosen'+'rejected' keys. Found keys: {sorted(keys)}"
         )
 
 
@@ -47,6 +50,8 @@ def validate_samples(samples: list[dict], fmt: str) -> list[str]:
             errors.extend(_validate_completions_sample(sample, idx))
         elif fmt == "text":
             errors.extend(_validate_text_sample(sample, idx))
+        elif fmt == "preference":
+            errors.extend(_validate_preference_sample(sample, idx))
         else:
             errors.append(f"Unknown format: {fmt}")
             break
@@ -130,5 +135,57 @@ def _validate_text_sample(sample: dict, idx: int) -> list[str]:
         errors.append(
             f"Sample {idx}: 'text' must be a string, got {type(sample['text']).__name__}"
         )
+
+    return errors
+
+
+def _validate_preference_sample(sample: dict, idx: int) -> list[str]:
+    """Validate a single preference format sample (DPO).
+
+    Expected format:
+    {"chosen": [{"role": "user", ...}, {"role": "assistant", ...}],
+     "rejected": [{"role": "user", ...}, {"role": "assistant", ...}]}
+    """
+    errors = []
+
+    for field in ("chosen", "rejected"):
+        if field not in sample:
+            errors.append(f"Sample {idx}: missing '{field}' field")
+            continue
+
+        messages = sample[field]
+        if not isinstance(messages, list):
+            errors.append(
+                f"Sample {idx}: '{field}' must be a list, got {type(messages).__name__}"
+            )
+            continue
+
+        if not messages:
+            errors.append(f"Sample {idx}: '{field}' list is empty")
+            continue
+
+        for msg_idx, msg in enumerate(messages):
+            if not isinstance(msg, dict):
+                errors.append(
+                    f"Sample {idx}, {field}[{msg_idx}]: message must be a dict, "
+                    f"got {type(msg).__name__}"
+                )
+                continue
+
+            if "role" not in msg:
+                errors.append(f"Sample {idx}, {field}[{msg_idx}]: missing 'role' field")
+            elif not isinstance(msg["role"], str):
+                errors.append(
+                    f"Sample {idx}, {field}[{msg_idx}]: 'role' must be a string, "
+                    f"got {type(msg['role']).__name__}"
+                )
+
+            if "content" not in msg:
+                errors.append(f"Sample {idx}, {field}[{msg_idx}]: missing 'content' field")
+            elif not isinstance(msg["content"], str):
+                errors.append(
+                    f"Sample {idx}, {field}[{msg_idx}]: 'content' must be a string, "
+                    f"got {type(msg['content']).__name__}"
+                )
 
     return errors
