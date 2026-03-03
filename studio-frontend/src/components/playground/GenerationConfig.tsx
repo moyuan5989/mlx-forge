@@ -21,9 +21,9 @@ export default function GenerationConfig({ config, onChange, models, stats }: Pr
   return (
     <div className="space-y-4">
       <div>
-        <label className="block text-xs text-zinc-500 mb-1">Model</label>
+        <label className="block text-xs text-caption mb-1">Model</label>
         <select
-          className="w-full bg-zinc-800 border border-zinc-700 rounded-md px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+          className="w-full bg-surface-input border border-default rounded-md px-3 py-2 text-sm text-heading focus:outline-none focus:ring-1 focus:ring-indigo-500"
           value={config.model}
           onChange={(e) => set('model', e.target.value)}
         >
@@ -37,10 +37,10 @@ export default function GenerationConfig({ config, onChange, models, stats }: Pr
       </div>
 
       <div>
-        <label className="block text-xs text-zinc-500 mb-1">Adapter Path (optional)</label>
+        <label className="block text-xs text-caption mb-1">Adapter Path (optional)</label>
         <input
           type="text"
-          className="w-full bg-zinc-800 border border-zinc-700 rounded-md px-3 py-2 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+          className="w-full bg-surface-input border border-default rounded-md px-3 py-2 text-sm text-heading placeholder-caption focus:outline-none focus:ring-1 focus:ring-indigo-500"
           placeholder="/path/to/checkpoint"
           value={config.adapter}
           onChange={(e) => set('adapter', e.target.value)}
@@ -48,7 +48,7 @@ export default function GenerationConfig({ config, onChange, models, stats }: Pr
       </div>
 
       <div>
-        <label className="block text-xs text-zinc-500 mb-1">
+        <label className="block text-xs text-caption mb-1">
           Temperature: {config.temperature.toFixed(1)}
         </label>
         <input
@@ -63,7 +63,7 @@ export default function GenerationConfig({ config, onChange, models, stats }: Pr
       </div>
 
       <div>
-        <label className="block text-xs text-zinc-500 mb-1">
+        <label className="block text-xs text-caption mb-1">
           Top-p: {config.topP.toFixed(1)}
         </label>
         <input
@@ -78,24 +78,24 @@ export default function GenerationConfig({ config, onChange, models, stats }: Pr
       </div>
 
       <div>
-        <label className="block text-xs text-zinc-500 mb-1">Max Tokens</label>
+        <label className="block text-xs text-caption mb-1">Max Tokens</label>
         <input
           type="number"
           min="1"
           max="4096"
-          className="w-full bg-zinc-800 border border-zinc-700 rounded-md px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+          className="w-full bg-surface-input border border-default rounded-md px-3 py-2 text-sm text-heading focus:outline-none focus:ring-1 focus:ring-indigo-500"
           value={config.maxTokens}
           onChange={(e) => set('maxTokens', parseInt(e.target.value) || 512)}
         />
       </div>
 
       {stats && (
-        <div className="border-t border-zinc-800 pt-3 space-y-1">
-          <p className="text-xs text-zinc-500">
-            Tokens: <span className="text-zinc-300">{stats.numTokens}</span>
+        <div className="border-t border-subtle pt-3 space-y-1">
+          <p className="text-xs text-caption">
+            Tokens: <span className="text-label">{stats.numTokens}</span>
           </p>
-          <p className="text-xs text-zinc-500">
-            Speed: <span className="text-zinc-300">{stats.tokPerSec.toFixed(1)} tok/s</span>
+          <p className="text-xs text-caption">
+            Speed: <span className="text-label">{stats.tokPerSec.toFixed(1)} tok/s</span>
           </p>
         </div>
       )}

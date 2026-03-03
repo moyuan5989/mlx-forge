@@ -1,15 +1,105 @@
 @import "tailwindcss";
 
+@theme inline {
+  --color-surface-page: var(--surface-page);
+  --color-surface-sidebar: var(--surface-sidebar);
+  --color-surface-card: var(--surface-card);
+  --color-surface-input: var(--surface-input);
+  --color-surface-muted: var(--surface-muted);
+  --color-surface-hover: var(--surface-hover);
+  --color-surface-overlay: var(--surface-overlay);
+
+  --color-heading: var(--text-heading);
+  --color-body: var(--text-body);
+  --color-label: var(--text-label);
+  --color-caption: var(--text-caption);
+  --color-muted: var(--text-muted);
+
+  --color-subtle: var(--border-subtle);
+  --color-default: var(--border-default);
+
+  --color-progress-track: var(--progress-track);
+}
+
+/* ---------- Dark (default) ---------- */
 :root {
   font-family: system-ui, -apple-system, sans-serif;
   color-scheme: dark;
+
+  --surface-page: #18181b;
+  --surface-sidebar: #09090b;
+  --surface-card: rgba(39, 39, 42, 0.5);
+  --surface-input: #27272a;
+  --surface-muted: rgba(63, 63, 70, 0.5);
+  --surface-hover: #27272a;
+  --surface-overlay: #18181b;
+
+  --text-heading: #fafafa;
+  --text-body: #a1a1aa;
+  --text-label: #d4d4d8;
+  --text-caption: #71717a;
+  --text-muted: #52525b;
+
+  --border-subtle: #27272a;
+  --border-default: #3f3f46;
+
+  --progress-track: #3f3f46;
+
+  --shadow-card: none;
+
+  --chart-grid: #27272a;
+  --chart-axis: #71717a;
+  --chart-tooltip-bg: #18181b;
+  --chart-tooltip-border: #3f3f46;
+
+  --scrollbar-thumb: #3f3f46;
+  --scrollbar-thumb-hover: #52525b;
+}
+
+/* ---------- Light ---------- */
+.light {
+  color-scheme: light;
+
+  --surface-page: #f8fafc;
+  --surface-sidebar: #ffffff;
+  --surface-card: #ffffff;
+  --surface-input: #f1f5f9;
+  --surface-muted: #e2e8f0;
+  --surface-hover: #f1f5f9;
+  --surface-overlay: #f1f5f9;
+
+  --text-heading: #0f172a;
+  --text-body: #64748b;
+  --text-label: #475569;
+  --text-caption: #94a3b8;
+  --text-muted: #cbd5e1;
+
+  --border-subtle: #e2e8f0;
+  --border-default: #cbd5e1;
+
+  --progress-track: #cbd5e1;
+
+  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.06);
+
+  --chart-grid: #e2e8f0;
+  --chart-axis: #94a3b8;
+  --chart-tooltip-bg: #ffffff;
+  --chart-tooltip-border: #e2e8f0;
+
+  --scrollbar-thumb: #cbd5e1;
+  --scrollbar-thumb-hover: #94a3b8;
 }
 
 body {
   margin: 0;
   min-height: 100vh;
-  background-color: #18181b;
-  color: #fafafa;
+  background-color: var(--surface-page);
+  color: var(--text-heading);
+}
+
+/* Smooth theme transitions (disabled on page load to prevent flash) */
+:root:not(.no-transition) * {
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
 }
 
 ::-webkit-scrollbar {
@@ -20,9 +110,9 @@ body {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #3f3f46;
+  background: var(--scrollbar-thumb);
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #52525b;
+  background: var(--scrollbar-thumb-hover);
 }

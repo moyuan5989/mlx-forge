@@ -25,17 +25,23 @@ export default function Dashboard() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold text-zinc-50">Dashboard</h2>
+        <h2 className="text-2xl font-bold text-heading">Dashboard</h2>
         <div className="flex gap-2">
           <Link
-            to="/experiments"
+            to="/new"
             className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 transition-colors"
+          >
+            New Training
+          </Link>
+          <Link
+            to="/experiments"
+            className="rounded-md border border-default px-4 py-2 text-sm font-medium text-label hover:bg-surface-hover transition-colors"
           >
             Experiments
           </Link>
           <Link
             to="/playground"
-            className="rounded-md border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-300 hover:bg-zinc-800 transition-colors"
+            className="rounded-md border border-default px-4 py-2 text-sm font-medium text-label hover:bg-surface-hover transition-colors"
           >
             Playground
           </Link>
@@ -53,7 +59,7 @@ export default function Dashboard() {
       {/* Active training */}
       {runningRuns.length > 0 && (
         <section>
-          <h3 className="text-lg font-semibold text-zinc-50 mb-3">Active Training</h3>
+          <h3 className="text-lg font-semibold text-heading mb-3">Active Training</h3>
           <div className="space-y-3">
             {runningRuns.map((run) => {
               const progress = run.num_iters > 0 ? (run.current_step / run.num_iters) * 100 : 0
@@ -61,23 +67,23 @@ export default function Dashboard() {
                 <Link
                   key={run.id}
                   to={`/experiments/${run.id}`}
-                  className="block rounded-lg border border-zinc-800 bg-zinc-800/50 p-4 hover:border-zinc-700 transition-colors"
+                  className="block rounded-lg border border-subtle bg-surface-card shadow-[var(--shadow-card)] p-4 hover:border-default transition-colors"
                 >
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-medium text-zinc-200">
+                    <span className="text-sm font-medium text-label">
                       {truncate(run.id, 32)}
                     </span>
-                    <span className="text-xs text-zinc-500">
+                    <span className="text-xs text-caption">
                       {run.current_step}/{run.num_iters}
                     </span>
                   </div>
-                  <div className="w-full bg-zinc-700 rounded-full h-1.5">
+                  <div className="w-full bg-progress-track rounded-full h-1.5">
                     <div
                       className="bg-blue-500 h-1.5 rounded-full transition-all"
                       style={{ width: `${Math.min(progress, 100)}%` }}
                     />
                   </div>
-                  <p className="text-xs text-zinc-500 mt-1">
+                  <p className="text-xs text-caption mt-1">
                     {run.model && truncate(run.model, 40)}
                     {run.latest_train_loss != null && ` \u00b7 loss: ${formatLoss(run.latest_train_loss)}`}
                   </p>
@@ -91,7 +97,7 @@ export default function Dashboard() {
       {/* Recent runs */}
       <section>
         <div className="flex items-center justify-between mb-3">
-          <h3 className="text-lg font-semibold text-zinc-50">Recent Runs</h3>
+          <h3 className="text-lg font-semibold text-heading">Recent Runs</h3>
           {totalRuns > 5 && (
             <Link to="/experiments" className="text-sm text-indigo-400 hover:text-indigo-300 flex items-center gap-1">
               View all <ArrowRight className="h-3 w-3" />
@@ -100,12 +106,12 @@ export default function Dashboard() {
         </div>
 
         {recentRuns.length === 0 ? (
-          <p className="text-sm text-zinc-500">No training runs yet.</p>
+          <p className="text-sm text-caption">No training runs yet.</p>
         ) : (
-          <div className="rounded-lg border border-zinc-800 overflow-hidden">
+          <div className="rounded-lg border border-subtle overflow-hidden">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-zinc-800 text-zinc-500">
+                <tr className="border-b border-subtle text-caption">
                   <th className="text-left px-4 py-2 font-medium">Run</th>
                   <th className="text-left px-4 py-2 font-medium">Model</th>
                   <th className="text-left px-4 py-2 font-medium">Status</th>
@@ -114,27 +120,27 @@ export default function Dashboard() {
                   <th className="text-right px-4 py-2 font-medium">Val Loss</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-zinc-800">
+              <tbody className="divide-y divide-subtle">
                 {recentRuns.map((run) => (
-                  <tr key={run.id} className="hover:bg-zinc-800/50">
+                  <tr key={run.id} className="hover:bg-surface-hover">
                     <td className="px-4 py-2">
                       <Link to={`/experiments/${run.id}`} className="text-indigo-400 hover:text-indigo-300">
                         {truncate(run.id, 20)}
                       </Link>
                     </td>
-                    <td className="px-4 py-2 text-zinc-400 font-mono text-xs">
+                    <td className="px-4 py-2 text-body font-mono text-xs">
                       {run.model ? truncate(run.model, 30) : '-'}
                     </td>
                     <td className="px-4 py-2">
                       <StatusBadge status={run.status} />
                     </td>
-                    <td className="px-4 py-2 text-right text-zinc-400">
+                    <td className="px-4 py-2 text-right text-body">
                       {run.current_step}/{run.num_iters}
                     </td>
-                    <td className="px-4 py-2 text-right font-mono text-zinc-300">
+                    <td className="px-4 py-2 text-right font-mono text-label">
                       {formatLoss(run.latest_train_loss)}
                     </td>
-                    <td className="px-4 py-2 text-right font-mono text-zinc-300">
+                    <td className="px-4 py-2 text-right font-mono text-label">
                       {formatLoss(run.latest_val_loss)}
                     </td>
                   </tr>

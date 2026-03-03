@@ -6,11 +6,19 @@ import {
   Database,
   MessageSquare,
   Settings,
+  Plus,
+  ListOrdered,
+  Moon,
+  Sun,
+  Monitor,
 } from 'lucide-react'
 import { cn } from '../../lib/utils'
+import { useTheme } from '../../hooks/useTheme'
 
 const navItems = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard },
+  { to: '/new', label: 'New Training', icon: Plus },
+  { to: '/queue', label: 'Job Queue', icon: ListOrdered },
   { to: '/experiments', label: 'Experiments', icon: FlaskConical },
   { to: '/models', label: 'Models', icon: Box },
   { to: '/datasets', label: 'Datasets', icon: Database },
@@ -18,11 +26,16 @@ const navItems = [
   { to: '/settings', label: 'Settings', icon: Settings },
 ]
 
+const themeIcons = { dark: Moon, light: Sun, system: Monitor }
+
 export default function Sidebar() {
+  const { theme, cycleTheme } = useTheme()
+  const ThemeIcon = themeIcons[theme]
+
   return (
-    <aside className="fixed left-0 top-0 h-screen w-60 bg-zinc-950 border-r border-zinc-800 flex flex-col">
+    <aside className="fixed left-0 top-0 h-screen w-60 bg-surface-sidebar border-r border-subtle flex flex-col">
       <div className="px-5 py-5">
-        <h1 className="text-lg font-bold tracking-tight text-zinc-50">
+        <h1 className="text-lg font-bold tracking-tight text-heading">
           LMForge <span className="text-indigo-400 font-normal text-sm">Studio</span>
         </h1>
       </div>
@@ -38,7 +51,7 @@ export default function Sidebar() {
                 'flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors',
                 isActive
                   ? 'bg-indigo-500/10 text-indigo-400'
-                  : 'text-zinc-400 hover:text-zinc-50 hover:bg-zinc-800'
+                  : 'text-body hover:text-heading hover:bg-surface-hover'
               )
             }
           >
@@ -48,8 +61,15 @@ export default function Sidebar() {
         ))}
       </nav>
 
-      <div className="px-5 py-4 text-xs text-zinc-600">
-        v0.1.0
+      <div className="px-5 py-4 flex items-center justify-between">
+        <span className="text-xs text-muted">v2.0.0</span>
+        <button
+          onClick={cycleTheme}
+          className="p-1.5 rounded-md text-caption hover:text-heading hover:bg-surface-hover transition-colors"
+          title={`Theme: ${theme}`}
+        >
+          <ThemeIcon className="h-4 w-4" />
+        </button>
       </div>
     </aside>
   )

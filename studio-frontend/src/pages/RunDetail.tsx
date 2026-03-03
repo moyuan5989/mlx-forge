@@ -37,8 +37,8 @@ export default function RunDetail() {
     enabled: isRunning,
   })
 
-  if (isLoading) return <p className="text-zinc-500 text-sm">Loading...</p>
-  if (!run) return <p className="text-zinc-500 text-sm">Run not found.</p>
+  if (isLoading) return <p className="text-caption text-sm">Loading...</p>
+  if (!run) return <p className="text-caption text-sm">Run not found.</p>
 
   const trainMetrics = metrics?.train ?? []
   const evalMetrics = metrics?.eval ?? []
@@ -54,23 +54,23 @@ export default function RunDetail() {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <Link to="/experiments" className="inline-flex items-center gap-1 text-sm text-zinc-500 hover:text-zinc-300 mb-3">
+        <Link to="/experiments" className="inline-flex items-center gap-1 text-sm text-caption hover:text-label mb-3">
           <ArrowLeft className="h-3 w-3" /> Back to Experiments
         </Link>
         <div className="flex items-center gap-3">
-          <h2 className="text-2xl font-bold text-zinc-50">{id}</h2>
+          <h2 className="text-2xl font-bold text-heading">{id}</h2>
           <StatusBadge status={run.status} />
         </div>
-        <div className="flex gap-4 text-sm text-zinc-500 mt-1">
-          {run.model && <span>Model: <span className="text-zinc-300 font-mono">{run.model}</span></span>}
-          {adapterPreset && <span>Preset: <span className="text-zinc-300">{adapterPreset}</span></span>}
-          {adapterTargets && <span>Targets: <span className="text-zinc-300">{adapterTargets.join(', ')}</span></span>}
+        <div className="flex gap-4 text-sm text-caption mt-1">
+          {run.model && <span>Model: <span className="text-label font-mono">{run.model}</span></span>}
+          {adapterPreset && <span>Preset: <span className="text-label">{adapterPreset}</span></span>}
+          {adapterTargets && <span>Targets: <span className="text-label">{adapterTargets.join(', ')}</span></span>}
         </div>
       </div>
 
       {/* Loss chart */}
-      <section className="rounded-lg border border-zinc-800 bg-zinc-800/50 p-4">
-        <h3 className="text-sm font-medium text-zinc-300 mb-3">Loss Curve</h3>
+      <section className="rounded-lg border border-subtle bg-surface-card shadow-[var(--shadow-card)] p-4">
+        <h3 className="text-sm font-medium text-label mb-3">Loss Curve</h3>
         <LossChart trainMetrics={trainMetrics} evalMetrics={evalMetrics} />
       </section>
 
@@ -94,9 +94,9 @@ export default function RunDetail() {
 
       {/* Config */}
       {run.config && (
-        <section className="rounded-lg border border-zinc-800 bg-zinc-800/50 p-4">
-          <h3 className="text-sm font-medium text-zinc-300 mb-3">Configuration</h3>
-          <pre className="text-xs text-zinc-400 font-mono overflow-auto max-h-80 whitespace-pre-wrap">
+        <section className="rounded-lg border border-subtle bg-surface-card shadow-[var(--shadow-card)] p-4">
+          <h3 className="text-sm font-medium text-label mb-3">Configuration</h3>
+          <pre className="text-xs text-body font-mono overflow-auto max-h-80 whitespace-pre-wrap">
             {JSON.stringify(run.config, null, 2)}
           </pre>
         </section>
@@ -105,25 +105,25 @@ export default function RunDetail() {
       {/* Checkpoints */}
       {checkpoints && checkpoints.length > 0 && (
         <section>
-          <h3 className="text-sm font-medium text-zinc-300 mb-3">Checkpoints</h3>
-          <div className="rounded-lg border border-zinc-800 overflow-hidden">
+          <h3 className="text-sm font-medium text-label mb-3">Checkpoints</h3>
+          <div className="rounded-lg border border-subtle overflow-hidden">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-zinc-800 text-zinc-500">
+                <tr className="border-b border-subtle text-caption">
                   <th className="text-left px-4 py-2 font-medium">Name</th>
                   <th className="text-right px-4 py-2 font-medium">Step</th>
                   <th className="text-right px-4 py-2 font-medium">Val Loss</th>
                   <th className="text-right px-4 py-2 font-medium">Best</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-zinc-800">
+              <tbody className="divide-y divide-subtle">
                 {checkpoints.map((ckpt) => (
-                  <tr key={ckpt.name} className="hover:bg-zinc-800/50">
-                    <td className="px-4 py-2 font-mono text-zinc-300">{ckpt.name}</td>
-                    <td className="px-4 py-2 text-right text-zinc-400">
+                  <tr key={ckpt.name} className="hover:bg-surface-hover">
+                    <td className="px-4 py-2 font-mono text-label">{ckpt.name}</td>
+                    <td className="px-4 py-2 text-right text-body">
                       {ckpt.state?.step ?? '-'}
                     </td>
-                    <td className="px-4 py-2 text-right font-mono text-zinc-300">
+                    <td className="px-4 py-2 text-right font-mono text-label">
                       {formatLoss(ckpt.state?.best_val_loss)}
                     </td>
                     <td className="px-4 py-2 text-right">

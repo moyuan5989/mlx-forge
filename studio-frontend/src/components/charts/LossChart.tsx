@@ -1,3 +1,4 @@
+import { useMemo } from 'react'
 import {
   LineChart,
   Line,
@@ -8,6 +9,7 @@ import {
   ResponsiveContainer,
   Legend,
 } from 'recharts'
+import { useTheme } from '../../hooks/useTheme'
 import type { TrainMetric, EvalMetric } from '../../api/types'
 
 interface Props {
@@ -16,6 +18,18 @@ interface Props {
 }
 
 export default function LossChart({ trainMetrics, evalMetrics }: Props) {
+  const { resolvedTheme } = useTheme()
+
+  const chartColors = useMemo(() => {
+    const style = getComputedStyle(document.documentElement)
+    return {
+      grid: style.getPropertyValue('--chart-grid').trim() || '#27272a',
+      axis: style.getPropertyValue('--chart-axis').trim() || '#71717a',
+      tooltipBg: style.getPropertyValue('--chart-tooltip-bg').trim() || '#18181b',
+      tooltipBorder: style.getPropertyValue('--chart-tooltip-border').trim() || '#3f3f46',
+    }
+  }, [resolvedTheme])
+
   // Merge into a single array keyed by step
   const byStep = new Map<number, { step: number; train_loss?: number; val_loss?: number }>()
 
@@ -34,7 +48,7 @@ export default function LossChart({ trainMetrics, evalMetrics }: Props) {
 
   if (data.length === 0) {
     return (
-      <div className="flex items-center justify-center h-64 text-zinc-500 text-sm">
+      <div className="flex items-center justify-center h-64 text-caption text-sm">
         No metrics available
       </div>
     )
@@ -43,13 +57,13 @@ export default function LossChart({ trainMetrics, evalMetrics }: Props) {
   return (
     <ResponsiveContainer width="100%" height={320}>
       <LineChart data={data} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="#27272a" />
-        <XAxis dataKey="step" stroke="#71717a" tick={{ fontSize: 12 }} />
-        <YAxis stroke="#71717a" tick={{ fontSize: 12 }} />
+        <CartesianGrid strokeDasharray="3 3" stroke={chartColors.grid} />
+        <XAxis dataKey="step" stroke={chartColors.axis} tick={{ fontSize: 12 }} />
+        <YAxis stroke={chartColors.axis} tick={{ fontSize: 12 }} />
         <Tooltip
           contentStyle={{
-            backgroundColor: '#18181b',
-            border: '1px solid #3f3f46',
+            backgroundColor: chartColors.tooltipBg,
+            border: `1px solid ${chartColors.tooltipBorder}`,
             borderRadius: '6px',
             fontSize: '12px',
           }}

@@ -26,7 +26,7 @@ export default function ChatInput({ onSend, disabled }: Props) {
   return (
     <div className="flex gap-2">
       <textarea
-        className="flex-1 bg-zinc-800 border border-zinc-700 rounded-md px-3 py-2 text-sm text-zinc-100 placeholder-zinc-500 resize-none focus:outline-none focus:ring-1 focus:ring-indigo-500"
+        className="flex-1 bg-surface-input border border-default rounded-md px-3 py-2 text-sm text-heading placeholder-caption resize-none focus:outline-none focus:ring-1 focus:ring-indigo-500"
         rows={1}
         placeholder="Type a message..."
         value={value}

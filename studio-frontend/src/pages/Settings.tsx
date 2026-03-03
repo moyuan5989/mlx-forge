@@ -1,67 +1,63 @@
-import { useState, useEffect } from 'react'
+import { Moon, Sun, Monitor } from 'lucide-react'
+import { useTheme, type Theme } from '../hooks/useTheme'
+import { cn } from '../lib/utils'
+
+const themeOptions: { value: Theme; label: string; icon: typeof Moon }[] = [
+  { value: 'dark', label: 'Dark', icon: Moon },
+  { value: 'light', label: 'Light', icon: Sun },
+  { value: 'system', label: 'System', icon: Monitor },
+]
 
 export default function Settings() {
-  const [theme, setTheme] = useState<'dark' | 'light'>(() => {
-    return (localStorage.getItem('lmforge-theme') as 'dark' | 'light') || 'dark'
-  })
-
-  useEffect(() => {
-    localStorage.setItem('lmforge-theme', theme)
-    document.documentElement.classList.toggle('light', theme === 'light')
-  }, [theme])
+  const { theme, setTheme } = useTheme()
 
   return (
     <div className="space-y-6">
-      <h2 className="text-2xl font-bold text-zinc-50">Settings</h2>
+      <h2 className="text-2xl font-bold text-heading">Settings</h2>
 
       <div className="max-w-lg space-y-6">
         {/* Theme */}
-        <div className="rounded-lg border border-zinc-800 bg-zinc-800/50 p-4">
-          <label className="block text-sm font-medium text-zinc-300 mb-2">Theme</label>
-          <div className="flex gap-2">
-            <button
-              className={`rounded-md px-4 py-2 text-sm font-medium transition-colors ${
-                theme === 'dark'
-                  ? 'bg-indigo-600 text-white'
-                  : 'border border-zinc-700 text-zinc-400 hover:bg-zinc-800'
-              }`}
-              onClick={() => setTheme('dark')}
-            >
-              Dark
-            </button>
-            <button
-              className={`rounded-md px-4 py-2 text-sm font-medium transition-colors ${
-                theme === 'light'
-                  ? 'bg-indigo-600 text-white'
-                  : 'border border-zinc-700 text-zinc-400 hover:bg-zinc-800'
-              }`}
-              onClick={() => setTheme('light')}
-            >
-              Light
-            </button>
+        <div className="rounded-lg border border-subtle bg-surface-card shadow-[var(--shadow-card)] p-4">
+          <label className="block text-sm font-medium text-label mb-2">Theme</label>
+          <div className="inline-flex rounded-lg bg-surface-input p-1 gap-1">
+            {themeOptions.map(({ value, label, icon: Icon }) => (
+              <button
+                key={value}
+                className={cn(
+                  'flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
+                  theme === value
+                    ? 'bg-indigo-600 text-white'
+                    : 'text-body hover:text-heading hover:bg-surface-hover'
+                )}
+                onClick={() => setTheme(value)}
+              >
+                <Icon className="h-3.5 w-3.5" />
+                {label}
+              </button>
+            ))}
           </div>
         </div>
 
         {/* Paths */}
-        <div className="rounded-lg border border-zinc-800 bg-zinc-800/50 p-4">
-          <label className="block text-sm font-medium text-zinc-300 mb-2">Run Directory</label>
-          <p className="text-sm text-zinc-400 font-mono bg-zinc-900 rounded px-3 py-2">
+        <div className="rounded-lg border border-subtle bg-surface-card shadow-[var(--shadow-card)] p-4">
+          <label className="block text-sm font-medium text-label mb-2">Run Directory</label>
+          <p className="text-sm text-body font-mono bg-surface-overlay rounded px-3 py-2">
             ~/.lmforge/runs
           </p>
         </div>
 
-        <div className="rounded-lg border border-zinc-800 bg-zinc-800/50 p-4">
-          <label className="block text-sm font-medium text-zinc-300 mb-2">API Base URL</label>
-          <p className="text-sm text-zinc-400 font-mono bg-zinc-900 rounded px-3 py-2">
+        <div className="rounded-lg border border-subtle bg-surface-card shadow-[var(--shadow-card)] p-4">
+          <label className="block text-sm font-medium text-label mb-2">API Base URL</label>
+          <p className="text-sm text-body font-mono bg-surface-overlay rounded px-3 py-2">
             {window.location.origin}
           </p>
         </div>
 
         {/* Info */}
-        <div className="rounded-lg border border-zinc-800 bg-zinc-800/50 p-4">
-          <label className="block text-sm font-medium text-zinc-300 mb-2">About</label>
-          <div className="text-sm text-zinc-500 space-y-1">
-            <p>LMForge Studio v0.1.0</p>
+        <div className="rounded-lg border border-subtle bg-surface-card shadow-[var(--shadow-card)] p-4">
+          <label className="block text-sm font-medium text-label mb-2">About</label>
+          <div className="text-sm text-caption space-y-1">
+            <p>LMForge Studio v2.0.0</p>
             <p>LoRA SFT training framework for MLX on Apple Silicon</p>
             <p>
               API docs:{' '}

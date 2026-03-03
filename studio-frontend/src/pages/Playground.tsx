@@ -104,15 +104,15 @@ export default function Playground() {
 
   return (
     <div className="space-y-4">
-      <h2 className="text-2xl font-bold text-zinc-50">Playground</h2>
+      <h2 className="text-2xl font-bold text-heading">Playground</h2>
 
       <div className="flex gap-4 h-[calc(100vh-10rem)]">
         {/* Chat area */}
-        <div className="flex-1 flex flex-col rounded-lg border border-zinc-800 bg-zinc-900/50 overflow-hidden">
+        <div className="flex-1 flex flex-col rounded-lg border border-subtle bg-surface-overlay overflow-hidden">
           {/* Messages */}
           <div className="flex-1 overflow-y-auto p-4 space-y-1">
             {messages.length === 0 && (
-              <p className="text-sm text-zinc-600 text-center mt-20">
+              <p className="text-sm text-muted text-center mt-20">
                 {config.model
                   ? 'Send a message to start chatting.'
                   : 'Select a model to get started.'}
@@ -125,12 +125,12 @@ export default function Playground() {
           </div>
 
           {/* Input */}
-          <div className="border-t border-zinc-800 p-3 flex gap-2 items-end">
+          <div className="border-t border-subtle p-3 flex gap-2 items-end">
             <div className="flex-1">
               <ChatInput onSend={handleSend} disabled={generating || !config.model || !connected} />
             </div>
             <button
-              className="rounded-md border border-zinc-700 p-2 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors"
+              className="rounded-md border border-default p-2 text-body hover:text-label hover:bg-surface-hover transition-colors"
               onClick={handleClear}
               title="Clear conversation"
             >
@@ -140,8 +140,8 @@ export default function Playground() {
         </div>
 
         {/* Config panel */}
-        <div className="w-72 rounded-lg border border-zinc-800 bg-zinc-800/50 p-4 overflow-y-auto">
-          <h3 className="text-sm font-medium text-zinc-300 mb-4">Generation Settings</h3>
+        <div className="w-72 rounded-lg border border-subtle bg-surface-card shadow-[var(--shadow-card)] p-4 overflow-y-auto">
+          <h3 className="text-sm font-medium text-label mb-4">Generation Settings</h3>
           <GenerationConfig
             config={config}
             onChange={setConfig}

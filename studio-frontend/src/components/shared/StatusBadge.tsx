@@ -4,7 +4,7 @@ const variants: Record<string, string> = {
   completed: 'bg-emerald-500/10 text-emerald-400',
   running: 'bg-blue-500/10 text-blue-400',
   stopped: 'bg-amber-500/10 text-amber-400',
-  unknown: 'bg-zinc-500/10 text-zinc-400',
+  unknown: 'bg-surface-muted text-body',
 }
 
 export default function StatusBadge({ status }: { status: string }) {

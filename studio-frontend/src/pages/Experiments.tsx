@@ -20,20 +20,20 @@ export default function Experiments() {
   }
 
   if (isLoading) {
-    return <p className="text-zinc-500 text-sm">Loading runs...</p>
+    return <p className="text-caption text-sm">Loading runs...</p>
   }
 
   return (
     <div className="space-y-4">
-      <h2 className="text-2xl font-bold text-zinc-50">Experiments</h2>
+      <h2 className="text-2xl font-bold text-heading">Experiments</h2>
 
       {!runs || runs.length === 0 ? (
-        <p className="text-sm text-zinc-500">No training runs found.</p>
+        <p className="text-sm text-caption">No training runs found.</p>
       ) : (
-        <div className="rounded-lg border border-zinc-800 overflow-hidden">
+        <div className="rounded-lg border border-subtle overflow-hidden">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-zinc-800 text-zinc-500">
+              <tr className="border-b border-subtle text-caption">
                 <th className="text-left px-4 py-2 font-medium">Run ID</th>
                 <th className="text-left px-4 py-2 font-medium">Model</th>
                 <th className="text-left px-4 py-2 font-medium">Status</th>
@@ -43,32 +43,32 @@ export default function Experiments() {
                 <th className="text-right px-4 py-2 font-medium">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-zinc-800">
+            <tbody className="divide-y divide-subtle">
               {runs.map((run) => (
-                <tr key={run.id} className="hover:bg-zinc-800/50">
+                <tr key={run.id} className="hover:bg-surface-hover">
                   <td className="px-4 py-2">
                     <Link to={`/experiments/${run.id}`} className="text-indigo-400 hover:text-indigo-300">
                       {truncate(run.id, 24)}
                     </Link>
                   </td>
-                  <td className="px-4 py-2 text-zinc-400 font-mono text-xs">
+                  <td className="px-4 py-2 text-body font-mono text-xs">
                     {run.model ? truncate(run.model, 30) : '-'}
                   </td>
                   <td className="px-4 py-2">
                     <StatusBadge status={run.status} />
                   </td>
-                  <td className="px-4 py-2 text-right text-zinc-400">
+                  <td className="px-4 py-2 text-right text-body">
                     {run.current_step}/{run.num_iters}
                   </td>
-                  <td className="px-4 py-2 text-right font-mono text-zinc-300">
+                  <td className="px-4 py-2 text-right font-mono text-label">
                     {formatLoss(run.latest_train_loss)}
                   </td>
-                  <td className="px-4 py-2 text-right font-mono text-zinc-300">
+                  <td className="px-4 py-2 text-right font-mono text-label">
                     {formatLoss(run.latest_val_loss)}
                   </td>
                   <td className="px-4 py-2 text-right">
                     <button
-                      className="text-zinc-500 hover:text-red-400 transition-colors p-1"
+                      className="text-caption hover:text-red-400 transition-colors p-1"
                       onClick={() => handleDelete(run.id)}
                       title={confirmId === run.id ? 'Click again to confirm' : 'Delete run'}
                     >
