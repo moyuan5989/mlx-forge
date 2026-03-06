@@ -5,9 +5,25 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "lmforge"
 version = "0.1.0"
-description = "LoRA SFT training framework for MLX on Apple Silicon"
+description = "LoRA fine-tuning framework for MLX on Apple Silicon with a browser-based Studio UI"
 license = "MIT"
 requires-python = ">=3.10"
+authors = [
+    { name = "Jiekai Wang" },
+]
+keywords = ["mlx", "lora", "fine-tuning", "apple-silicon", "llm", "qlora", "dpo"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: MacOS",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
 dependencies = [
     "mlx>=0.18.0",
     "pydantic>=2.0",
@@ -15,17 +31,34 @@ dependencies = [
     "numpy>=1.24.0",
     "transformers>=4.35.0",
     "safetensors>=0.4.0",
+    "huggingface-hub>=0.20.0",
     "datasets>=2.16.0",
 ]
 
 [project.optional-dependencies]
-dev = [
-    "pytest>=7.0",
-    "pytest-timeout>=2.0",
+studio = [
+    "fastapi>=0.104.0",
+    "uvicorn[standard]>=0.24.0",
+    "websockets>=12.0",
 ]
 wandb = [
     "wandb>=0.16.0",
 ]
+dev = [
+    "pytest>=7.0",
+    "pytest-timeout>=2.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=4.1.0",
+    "httpx>=0.25.0",
+    "ruff>=0.4.0",
+]
+all = [
+    "lmforge[studio,wandb]",
+]
+
+[project.urls]
+Repository = "https://github.com/moyuan5989/LMForge"
+Issues = "https://github.com/moyuan5989/LMForge/issues"
 
 [project.scripts]
 lmforge = "lmforge.cli.main:main"
@@ -35,3 +68,10 @@ include = ["lmforge*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
