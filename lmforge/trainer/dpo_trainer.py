@@ -96,8 +96,9 @@ class DPOTrainer(BaseTrainer):
                 rejected_ids, rejected_labels)
             mx.eval(loss, ntoks)
 
-            total_loss += loss.item() * ntoks.item()
-            total_tokens += ntoks.item()
+            ntoks_val = ntoks.item()
+            total_loss += loss.item() * ntoks_val
+            total_tokens += ntoks_val
 
         return total_loss / total_tokens if total_tokens > 0 else float("inf")
 
@@ -110,7 +111,8 @@ class DPOTrainer(BaseTrainer):
             loss, ntoks = self._sft_loss(self.model, input_ids, labels)
             mx.eval(loss, ntoks)
 
-            total_loss += loss.item() * ntoks.item()
-            total_tokens += ntoks.item()
+            ntoks_val = ntoks.item()
+            total_loss += loss.item() * ntoks_val
+            total_tokens += ntoks_val
 
         return total_loss / total_tokens if total_tokens > 0 else float("inf")

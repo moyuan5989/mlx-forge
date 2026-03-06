@@ -128,8 +128,13 @@ class BaseTrainer:
         steps_since_report = 0
         report_start_time = time.perf_counter()
 
-        num_samples = len(self.train_dataset)
-        batches_per_epoch = max(1, num_samples // self.config.training.batch_size)
+        if hasattr(self.train_dataset, '__len__'):
+            num_samples = len(self.train_dataset)
+            batches_per_epoch = max(1, num_samples // self.config.training.batch_size)
+        else:
+            # Streaming/mixed dataset — epoch tracking is approximate
+            num_samples = 0
+            batches_per_epoch = self.config.training.num_iters
 
         start_step = self.state.step + 1
 
@@ -160,11 +165,12 @@ class BaseTrainer:
                 step_fns, batch_data, grad_accum, do_update, compile_state)
             mx.eval(compile_state, loss, toks, grad_accum)
 
+            toks_val = toks.item()
             losses += loss.item()
-            n_tokens += toks.item()
+            n_tokens += toks_val
             steps_since_report += 1
             self.state.step = it
-            self.state.trained_tokens += toks.item()
+            self.state.trained_tokens += toks_val
 
             # Reporting
             if (it % self.config.training.steps_per_report == 0 or
@@ -270,14 +276,18 @@ class SFTTrainer(BaseTrainer):
         total_loss = 0.0
         total_tokens = 0
         num_batches = 0
+        max_batches = self.config.training.val_batches
 
         for input_ids, labels in iterate_batches(self.val_dataset, self.config):
             loss, ntoks = self.loss(self.model, input_ids, labels)
             mx.eval(loss, ntoks)
 
-            total_loss += loss.item() * ntoks.item()
-            total_tokens += ntoks.item()
+            ntoks_val = ntoks.item()
+            total_loss += loss.item() * ntoks_val
+            total_tokens += ntoks_val
             num_batches += 1
+            if num_batches >= max_batches:
+                break
 
         return total_loss / total_tokens if total_tokens > 0 else float("inf")
 
