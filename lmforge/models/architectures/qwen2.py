@@ -40,6 +40,7 @@ class ModelArgs(BaseModelArgs):
     max_position_embeddings: int
     rope_theta: float
     head_dim: Optional[int] = None
+    attention_bias: bool = True
     tie_word_embeddings: bool = False
     rope_scaling: Optional[Dict[str, Union[float, str]]] = None
     use_sliding_window: bool = False
@@ -62,9 +63,11 @@ class Attention(nn.Module):
         self.head_dim = head_dim = args.head_dim
         self.scale = head_dim**-0.5
 
-        self.q_proj = nn.Linear(dim, n_heads * head_dim, bias=True)
-        self.k_proj = nn.Linear(dim, n_kv_heads * head_dim, bias=True)
-        self.v_proj = nn.Linear(dim, n_kv_heads * head_dim, bias=True)
+        attention_bias = args.attention_bias
+
+        self.q_proj = nn.Linear(dim, n_heads * head_dim, bias=attention_bias)
+        self.k_proj = nn.Linear(dim, n_kv_heads * head_dim, bias=attention_bias)
+        self.v_proj = nn.Linear(dim, n_kv_heads * head_dim, bias=attention_bias)
         self.o_proj = nn.Linear(n_heads * head_dim, dim, bias=False)
 
         self.rope = initialize_rope(
@@ -205,12 +208,11 @@ class Model(nn.Module):
 
     def sanitize(self, weights: dict) -> dict:
         """Clean up weight dict before loading."""
+        weights = {
+            k: v for k, v in weights.items() if "rotary_emb" not in k
+        }
         if self.args.tie_word_embeddings:
             weights.pop("lm_head.weight", None)
-        # Remove rotary embeddings from weights (they're recomputed)
-        to_remove = [k for k in weights if "rotary_emb" in k]
-        for k in to_remove:
-            weights.pop(k)
         return weights
 
     @property

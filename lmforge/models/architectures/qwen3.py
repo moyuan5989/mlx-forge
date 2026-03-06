@@ -215,8 +215,12 @@ class Model(nn.Module):
         """
         Clean up weight dict before loading.
 
+        - Remove precomputed rotary frequencies
         - Remove lm_head if using tied embeddings
         """
+        weights = {
+            k: v for k, v in weights.items() if "rotary_emb" not in k
+        }
         if self.args.tie_word_embeddings:
             weights.pop("lm_head.weight", None)
         return weights

@@ -80,7 +80,6 @@ class Attention(nn.Module):
         self.n_heads = n_heads = args.num_attention_heads
         assert args.num_key_value_heads is not None
         self.n_kv_heads = n_kv_heads = args.num_key_value_heads
-        self.num_hidden_layers = args.num_hidden_layers
 
         self.head_dim = head_dim = args.hidden_size // n_heads
         self.scale = head_dim**-0.5
@@ -163,15 +162,12 @@ class TransformerBlock(nn.Module):
 
     def __init__(self, args: ModelArgs):
         super().__init__()
-        self.num_attention_heads = args.num_attention_heads
-        self.hidden_size = args.hidden_size
         self.self_attn = Attention(args)
         self.mlp = MLP(args.hidden_size, args.intermediate_size)
         self.input_layernorm = nn.RMSNorm(args.hidden_size, eps=args.rms_norm_eps)
         self.post_attention_layernorm = nn.RMSNorm(
             args.hidden_size, eps=args.rms_norm_eps
         )
-        self.args = args
 
     def __call__(
         self,
@@ -252,9 +248,8 @@ class Model(nn.Module):
         - Remove precomputed rotary frequencies
         - Remove lm_head if using tied embeddings
         """
-        # Remove unused precomputed rotary freqs
         weights = {
-            k: v for k, v in weights.items() if "self_attn.rotary_emb.inv_freq" not in k
+            k: v for k, v in weights.items() if "rotary_emb" not in k
         }
         if self.args.tie_word_embeddings:
             weights.pop("lm_head.weight", None)

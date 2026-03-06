@@ -10,7 +10,7 @@ Based on mlx-lm implementation (MIT License).
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, Optional, Union
 
 import mlx.core as mx
 import mlx.nn as nn
@@ -223,9 +223,8 @@ class Model(nn.Module):
         - Remove precomputed rotary frequencies
         - Remove lm_head if using tied embeddings
         """
-        # Remove unused precomputed rotary freqs
         weights = {
-            k: v for k, v in weights.items() if "self_attn.rotary_emb.inv_freq" not in k
+            k: v for k, v in weights.items() if "rotary_emb" not in k
         }
         if self.args.tie_word_embeddings:
             weights.pop("lm_head.weight", None)

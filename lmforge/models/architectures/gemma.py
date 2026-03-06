@@ -21,7 +21,7 @@ Reference: mlx-lm (MIT License)
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Dict, Optional, Union
 
 import mlx.core as mx
@@ -341,9 +341,7 @@ class Model(nn.Module):
         - Remove lm_head if using tied embeddings
         """
         weights = {
-            k: v
-            for k, v in weights.items()
-            if "self_attn.rotary_emb.inv_freq" not in k
+            k: v for k, v in weights.items() if "rotary_emb" not in k
         }
         if self.args.tie_word_embeddings:
             weights.pop("lm_head.weight", None)
