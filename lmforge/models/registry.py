@@ -27,6 +27,7 @@ SUPPORTED_ARCHITECTURES = {
     "phi4": "lmforge.models.architectures.phi4",
     "qwen2": "lmforge.models.architectures.qwen2",
     "qwen3": "lmforge.models.architectures.qwen3",
+    "qwen3_5": "lmforge.models.architectures.qwen3_5",
     "gemma": "lmforge.models.architectures.gemma",
     "gemma2": "lmforge.models.architectures.gemma",
     "gemma3": "lmforge.models.architectures.gemma",
