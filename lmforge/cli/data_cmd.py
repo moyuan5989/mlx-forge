@@ -29,6 +29,7 @@ def run_data(args) -> None:
         "import": _run_import,
         "inspect": _run_inspect,
         "stats": _run_stats,
+        "validate": _run_validate,
         "delete": _run_delete,
     }
     handler = handlers.get(subcmd)
@@ -160,6 +161,50 @@ def _run_stats(args) -> None:
         print(f"  Description: {meta['description']}")
     if meta.get("tags"):
         print(f"  Tags: {', '.join(meta['tags'])}")
+
+
+def _run_validate(args) -> None:
+    """Validate a JSONL data file."""
+    from lmforge.data.validate import validate_file
+
+    val_path = getattr(args, "val", None)
+    report = validate_file(args.file, val_path=val_path)
+
+    print(f"\n  File: {args.file}")
+    print(f"  Format: {report.format}")
+    print(f"  Samples: {report.num_samples:,}")
+
+    if report.length_stats:
+        stats = report.length_stats
+        print(f"\n  Character length stats:")
+        print(f"    Min: {stats['min']:,}  Max: {stats['max']:,}  Mean: {stats['mean']:,}")
+        print(f"    P50: {stats['p50']:,}  P95: {stats['p95']:,}")
+
+    if report.num_duplicates:
+        print(f"\n  Duplicates: {report.num_duplicates}")
+    if report.overlap_count:
+        print(f"  Train/val overlap: {report.overlap_count}")
+
+    if report.errors:
+        print(f"\n  ERRORS ({len(report.errors)}):")
+        for err in report.errors[:20]:
+            print(f"    - {err}")
+        if len(report.errors) > 20:
+            print(f"    ... and {len(report.errors) - 20} more")
+
+    if report.warnings:
+        print(f"\n  WARNINGS ({len(report.warnings)}):")
+        for warn in report.warnings[:20]:
+            print(f"    - {warn}")
+        if len(report.warnings) > 20:
+            print(f"    ... and {len(report.warnings) - 20} more")
+
+    if report.ok and not report.warnings:
+        print(f"\n  All checks passed!")
+    elif report.ok:
+        print(f"\n  Passed with {len(report.warnings)} warning(s)")
+    else:
+        print(f"\n  FAILED with {len(report.errors)} error(s)")
 
 
 def _run_delete(args) -> None:

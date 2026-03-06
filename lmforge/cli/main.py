@@ -178,6 +178,15 @@ def build_parser() -> argparse.ArgumentParser:
     stats_parser = data_subs.add_parser("stats", help="Show dataset statistics")
     stats_parser.add_argument("name", help="Dataset name")
 
+    # data validate
+    val_parser = data_subs.add_parser("validate", help="Validate a JSONL data file")
+    val_parser.add_argument("file", help="Path to JSONL file to validate")
+    val_parser.add_argument(
+        "--val",
+        default=None,
+        help="Optional validation file for overlap detection",
+    )
+
     # data delete
     del_parser = data_subs.add_parser("delete", help="Delete a downloaded dataset")
     del_parser.add_argument("name", help="Dataset name")
