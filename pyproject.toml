@@ -7,6 +7,7 @@ name = "lmforge"
 version = "0.1.0"
 description = "LoRA fine-tuning framework for MLX on Apple Silicon with a browser-based Studio UI"
 license = "MIT"
+readme = "README.md"
 requires-python = ">=3.10"
 authors = [
     { name = "Jiekai Wang" },
@@ -16,7 +17,6 @@ classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: MIT License",
     "Operating System :: MacOS",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.10",
