@@ -100,15 +100,20 @@ def generate_tokens(
     if seed is not None:
         mx.random.seed(seed)
 
-    # Determine number of layers for cache
-    if hasattr(model, "model") and hasattr(model.model, "layers"):
-        num_layers = len(model.model.layers)
-    elif hasattr(model, "layers"):
-        num_layers = len(model.layers)
-    else:
-        raise ValueError("Cannot determine number of layers in model")
+    # Pre-compute max cache size: prompt + generated tokens
+    cache_max_size = len(prompt_tokens) + max_tokens
 
-    cache = make_cache(num_layers)
+    # Create cache — prefer model-level method for hybrid architectures
+    if hasattr(model, "make_cache"):
+        cache = model.make_cache()
+    else:
+        if hasattr(model, "model") and hasattr(model.model, "layers"):
+            num_layers = len(model.model.layers)
+        elif hasattr(model, "layers"):
+            num_layers = len(model.layers)
+        else:
+            raise ValueError("Cannot determine number of layers in model")
+        cache = make_cache(num_layers, max_size=cache_max_size)
 
     # Prefill: process entire prompt at once
     tokens = mx.array(prompt_tokens)[None]  # (1, T)
