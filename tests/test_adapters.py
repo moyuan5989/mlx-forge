@@ -2,17 +2,17 @@
 
 from __future__ import annotations
 
-import pytest
 import mlx.core as mx
 import mlx.nn as nn
+import pytest
 
+from cortexlab.adapters.lora import LoRAEmbedding, LoRALinear, apply_lora
 from cortexlab.adapters.targeting import (
     PRESETS,
     get_patterns,
     named_modules,
     resolve_targets,
 )
-from cortexlab.adapters.lora import LoRALinear, LoRAEmbedding, apply_lora
 from cortexlab.config import AdapterConfig
 
 

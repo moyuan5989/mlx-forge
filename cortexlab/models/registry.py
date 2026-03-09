@@ -11,7 +11,6 @@ from typing import Tuple, Type
 
 import mlx.nn as nn
 
-
 # Remap model types to their architecture implementation
 # e.g., "mistral" models use the same architecture as "llama"
 MODEL_REMAPPING = {

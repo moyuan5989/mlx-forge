@@ -3,21 +3,19 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
-import mlx.core as mx
 import mlx.nn as nn
 import pytest
 
-from cortexlab import prepare, train
-from cortexlab.adapters.targeting import resolve_targets, get_patterns
+from cortexlab import prepare
+from cortexlab.adapters.targeting import get_patterns, resolve_targets
 from cortexlab.config import (
-    TrainingConfig,
-    ModelConfig,
     AdapterConfig,
     DataConfig,
-    TrainingParams,
+    ModelConfig,
     RuntimeConfig,
+    TrainingConfig,
+    TrainingParams,
 )
 
 
@@ -78,7 +76,7 @@ class TestEndToEnd:
         except ImportError as e:
             # Expected: mlx-lm not installed
             assert "mlx_lm" in str(e).lower() or "mlx-lm" in str(e).lower()
-        except Exception as e:
+        except Exception:
             # Other errors are acceptable for this integration test
             # (e.g., model download failures, tokenizer issues)
             pass
@@ -119,7 +117,7 @@ class TestEndToEnd:
 
         # Test 1: Both targets and preset specified (mutual exclusion)
         with pytest.raises(ValueError) as exc_info:
-            config = TrainingConfig(
+            TrainingConfig(
                 schema_version=1,
                 model=ModelConfig(path="test-model"),
                 adapter=AdapterConfig(
@@ -139,7 +137,7 @@ class TestEndToEnd:
 
         # Test 2: Neither targets nor preset specified
         with pytest.raises(ValueError) as exc_info:
-            config = TrainingConfig(
+            TrainingConfig(
                 schema_version=1,
                 model=ModelConfig(path="test-model"),
                 adapter=AdapterConfig(
@@ -158,7 +156,7 @@ class TestEndToEnd:
 
         # Test 3: steps_per_save not multiple of grad_accumulation_steps
         with pytest.raises(ValueError) as exc_info:
-            config = TrainingConfig(
+            TrainingConfig(
                 schema_version=1,
                 model=ModelConfig(path="test-model"),
                 adapter=AdapterConfig(preset="attention-qv", rank=8),
@@ -177,7 +175,7 @@ class TestEndToEnd:
 
         # Test 4: Invalid optimizer name
         with pytest.raises(ValueError) as exc_info:
-            config = TrainingConfig(
+            TrainingConfig(
                 schema_version=1,
                 model=ModelConfig(path="test-model"),
                 adapter=AdapterConfig(preset="attention-qv", rank=8),
@@ -193,7 +191,7 @@ class TestEndToEnd:
 
         # Test 5: Extra fields rejected (extra="forbid")
         with pytest.raises(ValueError) as exc_info:
-            config = TrainingConfig(
+            TrainingConfig(
                 schema_version=1,
                 model=ModelConfig(path="test-model"),
                 adapter=AdapterConfig(preset="attention-qv", rank=8),

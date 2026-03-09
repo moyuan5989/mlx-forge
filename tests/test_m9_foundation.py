@@ -12,14 +12,11 @@ from __future__ import annotations
 
 import json
 import math
-import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import mlx.core as mx
-import mlx.nn as nn
 import pytest
-
 
 # =============================================================================
 # Resume tests
@@ -123,8 +120,9 @@ class TestResume:
 
     def test_train_cmd_passes_resume(self):
         """CLI train command passes resume to train()."""
-        from cortexlab.cli.train_cmd import run_train
         import argparse
+
+        from cortexlab.cli.train_cmd import run_train
 
         args = argparse.Namespace(config="train.yaml", resume="/path/to/ckpt")
 
@@ -337,7 +335,7 @@ class TestInferenceEngine:
 
     def test_generate_result(self):
         """generate() should return a GenerationResult."""
-        from cortexlab.inference.engine import generate, GenerationResult
+        from cortexlab.inference.engine import GenerationResult, generate
 
         model, tokenizer = self._make_tiny_model_and_tokenizer()
         tokenizer.encode = MagicMock(return_value=[1, 2, 3])
@@ -451,7 +449,7 @@ class TestGemmaArchitecture:
 
     def test_gemma_embedding_scaling(self):
         """Gemma should scale embeddings by sqrt(hidden_size)."""
-        from cortexlab.models.architectures.gemma import GemmaModel, ModelArgs
+        from cortexlab.models.architectures.gemma import GemmaModel
 
         args = self._make_gemma_args()
         backbone = GemmaModel(args)
@@ -464,7 +462,6 @@ class TestGemmaArchitecture:
 
         # The model should scale by sqrt(hidden_size) = sqrt(128)
         scale = math.sqrt(128)
-        expected_magnitude_ratio = scale
 
         # Run through model (which scales) vs raw
         # We can't easily check the exact value since layers modify it,
@@ -589,7 +586,7 @@ class TestGemmaArchitecture:
 
     def test_gemma_lora_targeting(self):
         """LoRA should be applicable to Gemma attention modules."""
-        from cortexlab.adapters.targeting import named_modules, resolve_targets
+        from cortexlab.adapters.targeting import resolve_targets
         from cortexlab.models.architectures.gemma import Model
 
         args = self._make_gemma_args()

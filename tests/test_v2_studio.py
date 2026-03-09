@@ -317,6 +317,7 @@ class TestBackendMetadata:
     def test_save_tokenized_with_metadata(self, tmp_path, monkeypatch):
         """save_tokenized stores dataset_name and model_id in meta.json."""
         import json
+
         from cortexlab.data import backend
 
         monkeypatch.setattr(backend, "DATASETS_DIR", str(tmp_path))
@@ -334,6 +335,7 @@ class TestBackendMetadata:
     def test_save_tokenized_format_detection(self, tmp_path, monkeypatch):
         """save_tokenized detects SFT vs preference format."""
         import json
+
         from cortexlab.data import backend
 
         monkeypatch.setattr(backend, "DATASETS_DIR", str(tmp_path))
@@ -552,9 +554,11 @@ class TestV2ContractPreservation:
 
     def test_config_backward_compat(self):
         """V1 configs load without errors."""
-        from cortexlab.config import TrainingConfig
-        import yaml
         import tempfile
+
+        import yaml
+
+        from cortexlab.config import TrainingConfig
 
         v1_config = {
             "schema_version": 1,
@@ -580,5 +584,5 @@ class TestV2ContractPreservation:
 
     def test_trainer_alias_works(self):
         """Trainer class (V1 name) is still importable."""
-        from cortexlab.trainer.trainer import Trainer, SFTTrainer
+        from cortexlab.trainer.trainer import SFTTrainer, Trainer
         assert Trainer is SFTTrainer

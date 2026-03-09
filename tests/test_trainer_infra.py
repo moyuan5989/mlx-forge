@@ -3,25 +3,22 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
-import mlx.core as mx
 import mlx.nn as nn
-import pytest
 
 from cortexlab.config import (
-    TrainingConfig,
-    TrainingParams,
-    LRScheduleConfig,
-    ModelConfig,
     AdapterConfig,
     DataConfig,
+    LRScheduleConfig,
+    ModelConfig,
     RuntimeConfig,
+    TrainingConfig,
+    TrainingParams,
 )
+from cortexlab.logging.metrics import write_metrics_line
 from cortexlab.trainer.checkpoint import CheckpointManager
 from cortexlab.trainer.optimizer import build_optimizer, build_scheduler
 from cortexlab.trainer.state import TrainState
-from cortexlab.logging.metrics import write_metrics_line
 
 
 class MockModel(nn.Module):
@@ -71,7 +68,7 @@ class TestOptimizerFactory:
         )
 
         model = MockModel()
-        optimizer = build_optimizer(training_params, model)
+        build_optimizer(training_params, model)
 
         # Build the schedule directly to test it
         lr_schedule = build_scheduler(training_params)

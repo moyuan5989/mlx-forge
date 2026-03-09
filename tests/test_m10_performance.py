@@ -9,15 +9,12 @@ Tests cover:
 
 from __future__ import annotations
 
-import tempfile
-from pathlib import Path
 from unittest.mock import MagicMock
 
 import mlx.core as mx
 import mlx.nn as nn
 import numpy as np
 import pytest
-
 
 # =============================================================================
 # Helper: tiny Llama model for testing
@@ -277,7 +274,7 @@ class TestGradientCheckpointing:
         # Model with checkpointing (same weights)
         model2 = _make_tiny_model()
         # Copy weights from model1
-        from mlx.utils import tree_flatten, tree_unflatten
+        from mlx.utils import tree_flatten
         weights = dict(tree_flatten(model1.parameters()))
         model2.load_weights(list(weights.items()))
         _enable_gradient_checkpointing(model2)

@@ -9,9 +9,8 @@ Supports:
 
 from __future__ import annotations
 
-import numpy as np
-
 import mlx.core as mx
+import numpy as np
 
 
 def sample_next_token(

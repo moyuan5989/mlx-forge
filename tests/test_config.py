@@ -2,19 +2,19 @@
 
 from __future__ import annotations
 
-import yaml
 import pytest
+import yaml
 from pydantic import ValidationError
 
 from cortexlab.config import (
-    TrainingConfig,
-    ModelConfig,
     AdapterConfig,
     DataConfig,
     DataSourceConfig,
-    TrainingParams,
-    RuntimeConfig,
     LRScheduleConfig,
+    ModelConfig,
+    RuntimeConfig,
+    TrainingConfig,
+    TrainingParams,
 )
 
 

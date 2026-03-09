@@ -257,9 +257,9 @@ def convert_dataset(
                 f.write(json.dumps(sample, ensure_ascii=False) + "\n")
 
     print("\n✓ Dataset conversion complete!")
-    print(f"\nNext steps:")
+    print("\nNext steps:")
     print(f"  lmforge prepare --data {train_path} --model <your-model>")
-    print(f"  lmforge train --config train.yaml")
+    print("  lmforge train --config train.yaml")
 
 
 # ============================================================================

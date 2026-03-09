@@ -6,7 +6,7 @@ import json
 
 import pytest
 
-from cortexlab.data.validate import validate_file, ValidationReport
+from cortexlab.data.validate import validate_file
 
 
 @pytest.fixture

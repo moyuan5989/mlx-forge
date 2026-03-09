@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-import json
-from pathlib import Path
-
 import pytest
 
 from cortexlab.data.batching import iterate_batches
@@ -177,8 +174,9 @@ class TestBatching:
 
     def test_labels_padded_with_minus_100(self, sample_config_dict):
         """Labels should be padded with -100 (not 0)."""
-        from cortexlab.config import TrainingConfig
         import numpy as np
+
+        from cortexlab.config import TrainingConfig
 
         dataset = [
             {"input_ids": [1, 2, 3], "labels": [1, 2, 3]},

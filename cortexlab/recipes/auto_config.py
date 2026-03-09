@@ -11,7 +11,6 @@ from typing import Optional
 from cortexlab.models.memory import (
     HardwareProfile,
     auto_configure,
-    estimate_memory,
 )
 from cortexlab.recipes.registry import Recipe
 

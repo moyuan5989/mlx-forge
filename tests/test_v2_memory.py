@@ -5,10 +5,8 @@ from __future__ import annotations
 import pytest
 
 from cortexlab.models.memory import (
-    HardwareProfile,
-    MemoryEstimate,
-    ModelProfile,
     MODEL_PROFILES,
+    HardwareProfile,
     auto_configure,
     estimate_memory,
     get_compatible_models,

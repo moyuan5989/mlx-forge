@@ -5,16 +5,13 @@ V2: Uses per-token labels (-100 masking) instead of offset-based masking.
 
 from __future__ import annotations
 
-import json
 import tempfile
 from dataclasses import dataclass
 from unittest.mock import MagicMock
 
 import mlx.core as mx
 import mlx.nn as nn
-import numpy as np
 import pytest
-
 
 # ── Loss Functions ──────────────────────────────────────────────────────────
 
@@ -70,7 +67,7 @@ class TestSFTLoss:
 
     def test_trainer_loss_compat(self):
         """Trainer module-level functions still work."""
-        from cortexlab.trainer.trainer import loss_fn, loss_fn_packed
+        from cortexlab.trainer.trainer import loss_fn
 
         model = _make_dummy_model(vocab_size=10)
         input_ids = mx.array([[1, 2, 3, 4, 5]], dtype=mx.int32)
@@ -379,8 +376,8 @@ class TestConfigDPO:
 
     def test_existing_config_backward_compat(self):
         """Existing V1 configs without training_type still work."""
+
         from cortexlab.config import TrainingConfig
-        import yaml
 
         config_yaml = """
 schema_version: 1
@@ -412,7 +409,7 @@ class TestTrainerRefactor:
 
     def test_trainer_alias(self):
         """Trainer is an alias for SFTTrainer."""
-        from cortexlab.trainer.trainer import Trainer, SFTTrainer
+        from cortexlab.trainer.trainer import SFTTrainer, Trainer
 
         assert Trainer is SFTTrainer
 

@@ -6,9 +6,9 @@ provides hardware tier detection, and model compatibility matrix.
 
 from __future__ import annotations
 
-import os
 import math
-from dataclasses import dataclass, field
+import os
+from dataclasses import dataclass
 from typing import Optional
 
 

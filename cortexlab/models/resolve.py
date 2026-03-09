@@ -109,7 +109,7 @@ def resolve_model(
 
     # It's an HF repo ID - resolve it
     try:
-        from huggingface_hub import snapshot_download, model_info
+        from huggingface_hub import model_info, snapshot_download
         from huggingface_hub.utils import GatedRepoError, RepositoryNotFoundError
     except ImportError:
         raise ImportError(
@@ -168,7 +168,7 @@ def resolve_model(
         )
 
         if offline:
-            print(f"  → Using cached snapshot")
+            print("  → Using cached snapshot")
         else:
             print(f"  → Downloaded to: {local_path}")
 

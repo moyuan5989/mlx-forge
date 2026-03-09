@@ -5,7 +5,6 @@ from __future__ import annotations
 from cortexlab.models.memory import MODEL_PROFILES, HardwareProfile, estimate_memory
 from cortexlab.studio.services.model_service import ModelService
 
-
 # Map model ID prefixes to architecture families
 _ARCH_MAP = {
     "Qwen/Qwen3.5": "qwen3_5",

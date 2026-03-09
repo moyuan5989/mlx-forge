@@ -6,7 +6,6 @@ Mounts REST API routes and WebSocket hubs.
 from __future__ import annotations
 
 import asyncio
-import json
 from pathlib import Path
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
@@ -15,8 +14,18 @@ from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 
 from cortexlab._version import __version__
-from cortexlab.studio.api import datasets, inference, models, runs, training
-from cortexlab.studio.api import config_schema, data_library, memory, queue, recipes
+from cortexlab.studio.api import (
+    config_schema,
+    data_library,
+    datasets,
+    inference,
+    memory,
+    models,
+    queue,
+    recipes,
+    runs,
+    training,
+)
 from cortexlab.studio.services.metrics_watcher import MetricsWatcher
 
 

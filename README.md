@@ -4,7 +4,7 @@
 
 [![PyPI](https://img.shields.io/pypi/v/cortexlab)](https://pypi.org/project/cortexlab/)
 [![Python](https://img.shields.io/pypi/pyversions/cortexlab)](https://pypi.org/project/cortexlab/)
-[![License](https://img.shields.io/github/license/moyuan5989/CortexLab)](LICENSE)
+[![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![Tests](https://img.shields.io/github/actions/workflow/status/moyuan5989/CortexLab/test.yml?label=tests)](https://github.com/moyuan5989/CortexLab/actions)
 
 CortexLab is a complete LLM fine-tuning toolkit that runs entirely on your Mac. Pick a model, upload your data, and start training — all from a browser-based UI. Supports LoRA, QLoRA, DPO, 18+ models, and 20+ curated datasets out of the box.

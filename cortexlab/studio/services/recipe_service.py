@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Optional
 
 from cortexlab.recipes.auto_config import resolve_config
-from cortexlab.recipes.registry import Recipe, get_recipe, list_recipes
+from cortexlab.recipes.registry import get_recipe, list_recipes
 
 
 class RecipeService:

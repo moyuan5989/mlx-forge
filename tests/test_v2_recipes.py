@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-import pytest
-
-from cortexlab.recipes.registry import Recipe, get_recipe, list_recipes
 from cortexlab.recipes.auto_config import resolve_config
+from cortexlab.recipes.registry import Recipe, get_recipe, list_recipes
 
 
 class TestRecipeRegistry:

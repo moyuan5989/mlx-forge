@@ -4,22 +4,18 @@ from __future__ import annotations
 
 import mlx.core as mx
 import mlx.nn as nn
-import pytest
 
 from cortexlab.inference.cache import KVCache, RecurrentCache
 from cortexlab.models.architectures.qwen3_5 import (
-    Attention,
     DecoderLayer,
     GatedDeltaNet,
-    MLP,
     Model,
     ModelArgs,
     Qwen3_5RMSNormGated,
-    gated_delta_recurrence,
     gated_delta_chunkwise,
+    gated_delta_recurrence,
 )
 from cortexlab.models.registry import get_model_classes, is_supported
-
 
 # ---------------------------------------------------------------------------
 # Fixtures: Real config dicts for 0.8B and 2B

@@ -6,7 +6,6 @@ from typing import Optional
 
 from cortexlab.models.memory import (
     HardwareProfile,
-    MemoryEstimate,
     estimate_memory,
     get_compatible_models,
 )

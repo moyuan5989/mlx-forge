@@ -101,7 +101,7 @@ class TestChatLabels:
         result = tokenize_dataset(samples, tokenizer, "chat", mask_prompt=False)
 
         item = result[0]
-        labels = item["labels"]
+        item["labels"]
         # No masking: labels == input_ids
         assert item["labels"] == item["input_ids"]
 

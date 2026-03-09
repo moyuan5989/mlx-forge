@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
+from cortexlab.studio.services.model_library_service import ModelLibraryService
 from cortexlab.studio.services.model_service import ModelService
 
 router = APIRouter(prefix="/api/v1/models", tags=["models"])
@@ -33,8 +34,6 @@ def list_supported():
 
 
 # ── V2: Model Library ─────────────────────────────────────────────────────────
-
-from cortexlab.studio.services.model_library_service import ModelLibraryService
 
 router_v2 = APIRouter(prefix="/api/v2/models", tags=["models-v2"])
 

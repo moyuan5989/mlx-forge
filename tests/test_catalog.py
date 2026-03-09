@@ -3,11 +3,6 @@
 from __future__ import annotations
 
 import json
-import tempfile
-from pathlib import Path
-from unittest.mock import MagicMock, patch
-
-import pytest
 
 
 class TestCatalogEntries:
@@ -173,7 +168,7 @@ class TestConvertDataset:
 
     def test_convert_with_profile(self):
         """convert_dataset uses profile's column mapping."""
-        from cortexlab.data.catalog import DatasetProfile, ColumnMapping
+        from cortexlab.data.catalog import ColumnMapping, DatasetProfile
         from cortexlab.data.converter import convert_dataset
 
         profile = DatasetProfile(

@@ -8,7 +8,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from cortexlab.models.resolve import is_hf_repo_id, resolve_model, ResolvedModel
+from cortexlab.models.resolve import is_hf_repo_id, resolve_model
 
 
 class TestHFRepoIDDetection:
@@ -130,7 +130,7 @@ class TestHFResolutionOnline:
         mock_snapshot.return_value = "/cache/models/model-id/snapshots/pinned123"
 
         with patch("huggingface_hub.model_info") as mock_info:
-            resolved = resolve_model("Qwen/Qwen3-0.8B", revision="pinned123")
+            resolve_model("Qwen/Qwen3-0.8B", revision="pinned123")
 
             # Should NOT call model_info when revision is provided
             mock_info.assert_not_called()

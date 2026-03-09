@@ -5,7 +5,7 @@ from pathlib import Path
 
 from transformers import AutoTokenizer
 
-from cortexlab._version import __version__
+from cortexlab._version import __version__ as __version__
 from cortexlab.data.formats import detect_format, validate_samples
 from cortexlab.data.preprocessing import tokenize_dataset
 from cortexlab.inference.engine import GenerationResult
@@ -105,7 +105,7 @@ def prepare(
     )
 
     # Save via datasets backend
-    print(f"Saving to datasets backend...")
+    print("Saving to datasets backend...")
     path = backend.save_tokenized(dataset_name, model, tokenized)
 
     meta_path = path / "meta.json"
@@ -119,7 +119,7 @@ def prepare(
     return meta
 
 
-def train(config, resume: str | None = None) -> "cortexlab.trainer.state.TrainState":
+def train(config, resume: str | None = None):  # -> TrainState
     """Run LoRA SFT training from a config file or TrainingConfig object.
 
     Args:
@@ -129,7 +129,6 @@ def train(config, resume: str | None = None) -> "cortexlab.trainer.state.TrainSt
     Returns:
         Final TrainState after training completes.
     """
-    import mlx.core as mx
     import yaml
 
     from cortexlab.adapters.lora import apply_lora
@@ -146,7 +145,7 @@ def train(config, resume: str | None = None) -> "cortexlab.trainer.state.TrainSt
     if isinstance(config, str):
         config = TrainingConfig.from_yaml(config)
 
-    print(f"CortexLab v0 — Training")
+    print("CortexLab v0 — Training")
     print(f"Model: {config.model.path}")
     print(f"Adapter: {config.adapter.method} (rank={config.adapter.rank})")
     print()
@@ -277,7 +276,7 @@ def train(config, resume: str | None = None) -> "cortexlab.trainer.state.TrainSt
 
     # Write manifest
     print("Writing manifest...")
-    manifest = write_manifest(
+    write_manifest(
         run_dir,
         config.model_dump(),
         train_fingerprint,
@@ -405,6 +404,8 @@ def generate(
     """Generate text from a model with optional LoRA adapter."""
     from cortexlab.inference.engine import (
         generate as _generate,
+    )
+    from cortexlab.inference.engine import (
         generate_tokens,
         load_for_inference,
     )

@@ -9,20 +9,15 @@ Tests cover:
 
 from __future__ import annotations
 
-import asyncio
 import json
 import os
-import tempfile
 import time
-from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import yaml
 
 # FastAPI test client
 from fastapi.testclient import TestClient
-
 
 # ============================================================
 # Fixtures
@@ -116,10 +111,9 @@ def tmp_cache_dir(tmp_path):
 @pytest.fixture
 def app(tmp_runs_dir, tmp_cache_dir):
     """Create a test FastAPI app with mock service configuration."""
+    from cortexlab.studio.api import datasets
     from cortexlab.studio.server import create_app
-    from cortexlab.studio.api import datasets, runs
     from cortexlab.studio.services.dataset_service import DatasetService
-    from cortexlab.studio.services.run_service import RunService
 
     app = create_app(runs_dir=str(tmp_runs_dir))
 

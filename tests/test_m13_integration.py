@@ -3,23 +3,20 @@
 from __future__ import annotations
 
 import json
-import time
 from pathlib import Path
 
 import mlx.core as mx
-import mlx.nn as nn
 import numpy as np
 import pytest
 
-from cortexlab import prepare, train, generate
 from cortexlab.config import (
-    TrainingConfig,
-    ModelConfig,
     AdapterConfig,
     DataConfig,
-    TrainingParams,
-    RuntimeConfig,
+    ModelConfig,
     QuantizationConfig,
+    RuntimeConfig,
+    TrainingConfig,
+    TrainingParams,
 )
 from cortexlab.inference.sampling import sample_next_token
 
@@ -56,7 +53,7 @@ class TestMLXIndexingGotchas:
         mask = mx.array(mask_np)
 
         # Expand new_values to match array shape
-        new_values_full = mx.zeros_like(arr)
+        mx.zeros_like(arr)
         # We need to scatter new_values into the right positions
         # For this test, we'll just demonstrate the mask approach works
         result = mx.where(mask, mx.array([10.0, 2.0, 20.0, 4.0, 30.0]), arr)
@@ -480,11 +477,7 @@ class TestStudioIntegration:
         run1_dir.mkdir()
 
         # Create minimal config
-        config = {
-            "model": {"path": "test-model"},
-            "training": {"num_iters": 100},
-        }
-        (run1_dir / "config.yaml").write_text(f"model:\n  path: test-model\ntraining:\n  num_iters: 100")
+        (run1_dir / "config.yaml").write_text("model:\n  path: test-model\ntraining:\n  num_iters: 100")
 
         # Create RunService and test discovery
         service = RunService(run_dir)
@@ -687,7 +680,7 @@ class TestArchitectureSupport:
 
     def test_supported_architectures_registry(self):
         """Test that registry includes all documented architectures."""
-        from cortexlab.models.registry import is_supported, SUPPORTED_ARCHITECTURES
+        from cortexlab.models.registry import is_supported
 
         # Architectures documented as supported
         expected = ["llama", "qwen3", "phi3", "gemma", "gemma2", "mistral"]
@@ -702,7 +695,7 @@ class TestArchitectureSupport:
 
     def test_model_remapping(self):
         """Test that model remapping works (e.g., Mistral → Llama)."""
-        from cortexlab.models.registry import SUPPORTED_ARCHITECTURES, MODEL_REMAPPING
+        from cortexlab.models.registry import MODEL_REMAPPING, SUPPORTED_ARCHITECTURES
 
         # Mistral remaps to llama
         assert "mistral" in MODEL_REMAPPING or "mistral" in SUPPORTED_ARCHITECTURES

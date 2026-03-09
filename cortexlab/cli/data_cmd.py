@@ -176,7 +176,7 @@ def _run_validate(args) -> None:
 
     if report.length_stats:
         stats = report.length_stats
-        print(f"\n  Character length stats:")
+        print("\n  Character length stats:")
         print(f"    Min: {stats['min']:,}  Max: {stats['max']:,}  Mean: {stats['mean']:,}")
         print(f"    P50: {stats['p50']:,}  P95: {stats['p95']:,}")
 
@@ -200,7 +200,7 @@ def _run_validate(args) -> None:
             print(f"    ... and {len(report.warnings) - 20} more")
 
     if report.ok and not report.warnings:
-        print(f"\n  All checks passed!")
+        print("\n  All checks passed!")
     elif report.ok:
         print(f"\n  Passed with {len(report.warnings)} warning(s)")
     else:
