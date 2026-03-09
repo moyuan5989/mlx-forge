@@ -96,7 +96,6 @@ Models are auto-downloaded from Hugging Face on first use. Any HF model using a 
 | `cortexlab studio` | Launch the Studio UI |
 | `cortexlab train --config FILE` | Run LoRA/QLoRA/DPO training |
 | `cortexlab generate --model MODEL` | Generate text or interactive chat |
-| `cortexlab prepare --data FILE --model MODEL` | Pre-tokenize a dataset |
 | `cortexlab data catalog` | Browse 20+ curated datasets |
 | `cortexlab data download DATASET` | Download a dataset from the catalog |
 | `cortexlab data import FILE --name NAME` | Import a local JSONL file |
