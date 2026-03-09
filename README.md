@@ -43,14 +43,7 @@ CortexLab is a framework for fine-tuning large language models on your Mac. It s
 ## Installation
 
 ```bash
-# Core framework
 pip install cortexlab
-
-# With Studio UI
-pip install "cortexlab[studio]"
-
-# Everything (Studio + WandB logging)
-pip install "cortexlab[all]"
 ```
 
 Requires macOS with Apple Silicon (M1/M2/M3/M4) and Python 3.10+.
@@ -60,7 +53,7 @@ Requires macOS with Apple Silicon (M1/M2/M3/M4) and Python 3.10+.
 **1. Install and download a dataset:**
 
 ```bash
-pip install "cortexlab[studio]"
+pip install cortexlab
 cortexlab data catalog
 cortexlab data download alpaca-cleaned --max-samples 5000
 ```

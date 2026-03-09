@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cortexlab"
-version = "0.1.0"
+version = "0.1.1"
 description = "LoRA fine-tuning framework for MLX on Apple Silicon with a browser-based Studio UI"
 license = "MIT"
 readme = "README.md"
@@ -33,14 +33,12 @@ dependencies = [
     "safetensors>=0.4.0",
     "huggingface-hub>=0.20.0",
     "datasets>=2.16.0",
-]
-
-[project.optional-dependencies]
-studio = [
     "fastapi>=0.104.0",
     "uvicorn[standard]>=0.24.0",
     "websockets>=12.0",
 ]
+
+[project.optional-dependencies]
 wandb = [
     "wandb>=0.16.0",
 ]
@@ -53,7 +51,7 @@ dev = [
     "ruff>=0.4.0",
 ]
 all = [
-    "cortexlab[studio,wandb]",
+    "cortexlab[wandb]",
 ]
 
 [project.urls]
