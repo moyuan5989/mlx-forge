@@ -70,18 +70,18 @@ Launch the browser-based dashboard with `cortexlab studio`:
 - Cosine, linear, step, and exponential LR schedules with warmup
 - Resume from any checkpoint
 
-**Models**
+**Models** — 18 curated models in the Studio library, all tested on Apple Silicon:
 
-| Architecture | Model Families | Sizes |
-|-------------|---------------|-------|
-| Llama | Llama 2, Llama 3, Llama 3.1, Llama 3.2 | 1B - 70B |
-| Mistral | Mistral 7B, Mistral Nemo | 7B - 12B |
-| Qwen | Qwen 2, Qwen 2.5, Qwen 3, Qwen 3.5 | 0.6B - 72B |
-| Phi | Phi-3, Phi-3.5, Phi-4 | 3.8B - 14B |
-| Gemma | Gemma 1, Gemma 2, Gemma 3 | 1B - 27B |
+| Architecture | Models | Sizes |
+|-------------|--------|-------|
+| Qwen | Qwen 2.5, Qwen 3, Qwen 3.5 | 0.5B - 8B |
+| Gemma | Gemma 2, Gemma 3 | 1B - 9B |
+| Llama | Llama 3.1 | 8B |
+| Phi | Phi-3 Mini, Phi-4 Mini | 3.8B |
 | DeepSeek | DeepSeek-R1-Distill (Qwen-based) | 1.5B - 7B |
+| Mistral | Mistral (uses Llama architecture) | 7B |
 
-Models are auto-downloaded from Hugging Face on first use.
+Models are auto-downloaded from Hugging Face on first use. Any HF model using a supported architecture will work — the table above shows the curated models with pre-computed memory estimates in Studio.
 
 **Data**
 - 20+ curated datasets across 7 categories (general, code, math, conversation, reasoning, safety, domain)
