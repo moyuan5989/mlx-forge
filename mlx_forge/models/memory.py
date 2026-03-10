@@ -329,8 +329,6 @@ def auto_configure(
     if use_qlora:
         overrides["model.quantization"] = {"bits": 4, "group_size": 64}
 
-    quant_bits = 4 if use_qlora else None
-
     # Step 2: Choose batch_size and enable gradient checkpointing
     # Always enable gradient checkpointing (~10-15% slower but prevents OOM,
     # especially critical for hybrid architectures like Qwen3.5 DeltaNet).
