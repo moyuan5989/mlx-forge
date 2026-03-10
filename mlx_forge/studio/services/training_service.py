@@ -22,13 +22,13 @@ class TrainingService:
         self._configs: dict[str, dict] = {}
 
     async def start_training(self, config_dict: dict) -> dict:
-        """Start a training run as a subprocess.
+        """Start a training run as a subprocess and return immediately.
 
         Args:
             config_dict: Full training config as a dict.
 
         Returns:
-            Dict with run info: {"status": "started", "config_path": "..."}.
+            Dict with run info including the subprocess for callers to await.
         """
         # Write config to a temp file
         config_dir = Path(tempfile.mkdtemp(prefix="mlx_forge_studio_"))
@@ -56,7 +56,36 @@ class TrainingService:
             "track_id": track_id,
             "pid": proc.pid,
             "config_path": str(config_path),
+            "_process": proc,
         }
+
+    async def wait_for_completion(self, proc: asyncio.subprocess.Process) -> tuple[int, str]:
+        """Wait for a training subprocess to finish.
+
+        Returns:
+            Tuple of (return_code, stderr_tail).
+        """
+        # Stream stdout/stderr to avoid memory buildup on long runs
+        stderr_tail: list[str] = []
+
+        async def _drain(stream, collector: list[str] | None):
+            if stream is None:
+                return
+            while True:
+                line = await stream.readline()
+                if not line:
+                    break
+                if collector is not None:
+                    collector.append(line.decode(errors="replace").rstrip())
+                    if len(collector) > 20:
+                        collector.pop(0)
+
+        await asyncio.gather(
+            _drain(proc.stdout, None),
+            _drain(proc.stderr, stderr_tail),
+        )
+        await proc.wait()
+        return proc.returncode, "\n".join(stderr_tail)
 
     async def stop_training(self, track_id: str) -> dict:
         """Stop a running training process via SIGINT.

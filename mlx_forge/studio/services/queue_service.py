@@ -155,13 +155,26 @@ class QueueService:
         asyncio.create_task(self._run_job(job))
 
     async def _run_job(self, job: Job):
-        """Execute a training job."""
+        """Execute a training job and wait for the subprocess to finish."""
         try:
             from mlx_forge.studio.services.training_service import TrainingService
             service = TrainingService()
             result = await service.start_training(job.config)
-            job.run_id = result.get("run_id")
-            job.status = JobStatus.COMPLETED
+            job.run_id = result.get("track_id")
+
+            # Wait for the training subprocess to actually finish
+            proc = result.get("_process")
+            if proc is not None:
+                returncode, stderr = await service.wait_for_completion(proc)
+                if returncode != 0:
+                    job.status = JobStatus.FAILED
+                    # Capture last few lines of stderr for error context
+                    error_lines = stderr.strip().split("\n")[-5:]
+                    job.error = "\n".join(error_lines) if error_lines else f"Process exited with code {returncode}"
+                else:
+                    job.status = JobStatus.COMPLETED
+            else:
+                job.status = JobStatus.COMPLETED
         except Exception as e:
             job.status = JobStatus.FAILED
             job.error = str(e)
