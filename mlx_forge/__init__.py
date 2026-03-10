@@ -427,7 +427,7 @@ def generate(
             prompt_tokens = tokenizer.apply_chat_template(
                 messages, add_generation_prompt=True
             )
-            if isinstance(prompt_tokens, dict):
+            if not isinstance(prompt_tokens, list):
                 prompt_tokens = prompt_tokens["input_ids"]
         elif prompt is not None:
             prompt_tokens = tokenizer.encode(prompt)
