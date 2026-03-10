@@ -1,3 +1,4 @@
+import Markdown from 'react-markdown'
 import { cn } from '../../lib/utils'
 import { User, Bot } from 'lucide-react'
 
@@ -24,11 +25,17 @@ export default function ChatMessage({ role, content }: Props) {
       </div>
       <div
         className={cn(
-          'rounded-lg px-3 py-2 max-w-[80%] text-sm whitespace-pre-wrap',
-          isUser ? 'bg-indigo-600/20 text-heading' : 'bg-surface-input text-label'
+          'rounded-lg px-3 py-2 max-w-[80%] text-sm',
+          isUser ? 'bg-indigo-600/20 text-heading whitespace-pre-wrap' : 'bg-surface-input text-label'
         )}
       >
-        {content}
+        {isUser ? (
+          content
+        ) : (
+          <div className="prose prose-invert prose-sm max-w-none [&_pre]:bg-surface-muted [&_pre]:rounded [&_pre]:p-2 [&_code]:text-xs [&_p]:my-1 [&_ul]:my-1 [&_ol]:my-1 [&_li]:my-0">
+            <Markdown>{content}</Markdown>
+          </div>
+        )}
       </div>
     </div>
   )

@@ -78,6 +78,7 @@ def _run_interactive(model, tokenizer, args) -> None:
         t0 = time.perf_counter()
         num_tokens = 0
 
+        token_buffer = []
         for token_id in generate_tokens(
             model,
             prompt_tokens,
@@ -87,10 +88,17 @@ def _run_interactive(model, tokenizer, args) -> None:
             max_tokens=args.max_tokens,
             repetition_penalty=args.repetition_penalty,
         ):
-            text = tokenizer.decode([token_id])
+            num_tokens += 1
+            token_buffer.append(token_id)
+            text = tokenizer.decode(token_buffer)
+            if text and "\ufffd" not in text:
+                print(text, end="", flush=True)
+                generated_text += text
+                token_buffer.clear()
+        if token_buffer:
+            text = tokenizer.decode(token_buffer)
             print(text, end="", flush=True)
             generated_text += text
-            num_tokens += 1
 
         elapsed = time.perf_counter() - t0
         tok_s = num_tokens / elapsed if elapsed > 0 else 0.0

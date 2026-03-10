@@ -26,6 +26,12 @@ def list_runs():
     return get_run_service().list_runs()
 
 
+@router.get("/adapters")
+def list_adapters():
+    """List available LoRA adapters from training runs."""
+    return get_run_service().list_adapters()
+
+
 @router.get("/{run_id}")
 def get_run(run_id: str):
     """Get full details for a training run."""

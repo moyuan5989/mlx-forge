@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { RotateCcw } from 'lucide-react'
-import { useModels } from '../hooks/useModels'
+import { useModels, useAdapters } from '../hooks/useModels'
 import { useWebSocket } from '../hooks/useWebSocket'
 import ChatMessage from '../components/playground/ChatMessage'
 import ChatInput from '../components/playground/ChatInput'
@@ -14,6 +14,7 @@ interface Message {
 
 export default function Playground() {
   const { data: models } = useModels()
+  const { data: adapters } = useAdapters()
   const supportedModels = (models ?? []).filter((m) => m.supported)
 
   const [messages, setMessages] = useState<Message[]>([])
@@ -146,6 +147,7 @@ export default function Playground() {
             config={config}
             onChange={setConfig}
             models={supportedModels}
+            adapters={adapters ?? []}
             stats={stats}
           />
           {!connected && (

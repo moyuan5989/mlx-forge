@@ -190,6 +190,15 @@ export interface LibraryModel {
   fit_level: 'comfortable' | 'tight' | 'unlikely'
 }
 
+export interface Adapter {
+  run_id: string
+  model: string
+  status: string
+  checkpoint: string
+  path: string
+  label: string
+}
+
 export interface QueueJob {
   id: string
   config: Record<string, unknown>

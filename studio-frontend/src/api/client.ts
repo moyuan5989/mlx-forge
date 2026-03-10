@@ -29,6 +29,7 @@ export const api = {
   getRunConfig: (id: string) => request<Record<string, unknown>>(`/runs/${id}/config`),
   getRunCheckpoints: (id: string) => request<import('./types').Checkpoint[]>(`/runs/${id}/checkpoints`),
   deleteRun: (id: string) => request<{ status: string }>(`/runs/${id}`, { method: 'DELETE' }),
+  getAdapters: () => request<import('./types').Adapter[]>('/runs/adapters'),
 
   // Models
   getModels: () => request<import('./types').Model[]>('/models'),

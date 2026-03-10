@@ -1,3 +1,5 @@
+import type { Adapter } from '../../api/types'
+
 interface Config {
   model: string
   adapter: string
@@ -10,10 +12,11 @@ interface Props {
   config: Config
   onChange: (config: Config) => void
   models: { id: string; model_id: string }[]
+  adapters: Adapter[]
   stats?: { numTokens: number; tokPerSec: number } | null
 }
 
-export default function GenerationConfig({ config, onChange, models, stats }: Props) {
+export default function GenerationConfig({ config, onChange, models, adapters, stats }: Props) {
   function set<K extends keyof Config>(key: K, value: Config[K]) {
     onChange({ ...config, [key]: value })
   }
@@ -37,14 +40,22 @@ export default function GenerationConfig({ config, onChange, models, stats }: Pr
       </div>
 
       <div>
-        <label className="block text-xs text-caption mb-1">Adapter Path (optional)</label>
-        <input
-          type="text"
-          className="w-full bg-surface-input border border-default rounded-md px-3 py-2 text-sm text-heading placeholder-caption focus:outline-none focus:ring-1 focus:ring-indigo-500"
-          placeholder="/path/to/checkpoint"
+        <label className="block text-xs text-caption mb-1">LoRA Adapter (optional)</label>
+        <select
+          className="w-full bg-surface-input border border-default rounded-md px-3 py-2 text-sm text-heading focus:outline-none focus:ring-1 focus:ring-indigo-500"
           value={config.adapter}
           onChange={(e) => set('adapter', e.target.value)}
-        />
+        >
+          <option value="">No adapter (base model)</option>
+          {adapters.map((a) => (
+            <option key={a.path} value={a.path}>
+              {a.label}
+            </option>
+          ))}
+        </select>
+        {adapters.length === 0 && (
+          <p className="text-[10px] text-muted mt-1">No finetuned adapters found. Complete a training run to see adapters here.</p>
+        )}
       </div>
 
       <div>

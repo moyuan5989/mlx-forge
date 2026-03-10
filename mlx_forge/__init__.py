@@ -435,6 +435,7 @@ def generate(
             raise ValueError("Must provide either 'prompt' or 'messages'")
 
         def _stream():
+            buffer = []
             for token_id in generate_tokens(
                 loaded_model,
                 prompt_tokens,
@@ -445,7 +446,13 @@ def generate(
                 repetition_penalty=repetition_penalty,
                 seed=seed,
             ):
-                yield tokenizer.decode([token_id])
+                buffer.append(token_id)
+                text = tokenizer.decode(buffer)
+                if text and "\ufffd" not in text:
+                    yield text
+                    buffer.clear()
+            if buffer:
+                yield tokenizer.decode(buffer)
 
         return _stream()
 

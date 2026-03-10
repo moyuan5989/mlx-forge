@@ -147,6 +147,51 @@ class RunService:
 
         return _sanitize_for_json(checkpoints)
 
+    def list_adapters(self) -> list[dict]:
+        """List available adapters from completed runs (best checkpoint per run)."""
+        if not self.runs_dir.exists():
+            return []
+
+        adapters = []
+        for run_dir in sorted(self.runs_dir.iterdir(), reverse=True):
+            if not run_dir.is_dir() or run_dir.name.startswith("."):
+                continue
+            try:
+                summary = self._build_summary(run_dir)
+            except Exception:
+                continue
+
+            # Find best checkpoint (or latest if no best symlink)
+            ckpt_dir = run_dir / "checkpoints"
+            if not ckpt_dir.exists():
+                continue
+
+            best_link = ckpt_dir / "best"
+            if best_link.exists():
+                ckpt_path = best_link.resolve()
+            else:
+                # Fall back to last checkpoint directory
+                ckpts = sorted(
+                    [d for d in ckpt_dir.iterdir() if d.is_dir() and not d.is_symlink()],
+                )
+                if not ckpts:
+                    continue
+                ckpt_path = ckpts[-1]
+
+            if not (ckpt_path / "adapters.safetensors").exists():
+                continue
+
+            adapters.append({
+                "run_id": summary["id"],
+                "model": summary.get("model", "unknown"),
+                "status": summary.get("status", "unknown"),
+                "checkpoint": ckpt_path.name,
+                "path": str(ckpt_path),
+                "label": f"{summary['id']} ({summary.get('model', '?').split('/')[-1]})",
+            })
+
+        return adapters
+
     def delete_run(self, run_id: str) -> bool:
         """Delete a run directory. Returns True if deleted."""
         run_dir = self.runs_dir / run_id

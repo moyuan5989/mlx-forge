@@ -12,3 +12,7 @@ export function useSupportedArchitectures() {
 export function useModelLibrary() {
   return useQuery({ queryKey: ['model-library'], queryFn: apiV2.getModelLibrary })
 }
+
+export function useAdapters() {
+  return useQuery({ queryKey: ['adapters'], queryFn: api.getAdapters })
+}
