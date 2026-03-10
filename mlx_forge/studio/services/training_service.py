@@ -59,33 +59,45 @@ class TrainingService:
             "_process": proc,
         }
 
-    async def wait_for_completion(self, proc: asyncio.subprocess.Process) -> tuple[int, str]:
+    async def wait_for_completion(
+        self, proc: asyncio.subprocess.Process,
+    ) -> tuple[int, str, str | None]:
         """Wait for a training subprocess to finish.
 
         Returns:
-            Tuple of (return_code, stderr_tail).
+            Tuple of (return_code, stderr_tail, run_id).
+            run_id is extracted from the "Run directory:" stdout line.
         """
-        # Stream stdout/stderr to avoid memory buildup on long runs
         stderr_tail: list[str] = []
+        run_id: list[str | None] = [None]  # mutable container for closure
 
-        async def _drain(stream, collector: list[str] | None):
+        async def _drain_stdout(stream):
             if stream is None:
                 return
             while True:
                 line = await stream.readline()
                 if not line:
                     break
-                if collector is not None:
-                    collector.append(line.decode(errors="replace").rstrip())
-                    if len(collector) > 20:
-                        collector.pop(0)
+                text = line.decode(errors="replace").rstrip()
+                # Parse "Run directory: /path/to/runs/{run_id}"
+                if text.startswith("Run directory:") and run_id[0] is None:
+                    path = text.split(":", 1)[1].strip()
+                    run_id[0] = Path(path).name
 
-        await asyncio.gather(
-            _drain(proc.stdout, None),
-            _drain(proc.stderr, stderr_tail),
-        )
+        async def _drain_stderr(stream):
+            if stream is None:
+                return
+            while True:
+                line = await stream.readline()
+                if not line:
+                    break
+                stderr_tail.append(line.decode(errors="replace").rstrip())
+                if len(stderr_tail) > 20:
+                    stderr_tail.pop(0)
+
+        await asyncio.gather(_drain_stdout(proc.stdout), _drain_stderr(proc.stderr))
         await proc.wait()
-        return proc.returncode, "\n".join(stderr_tail)
+        return proc.returncode, "\n".join(stderr_tail), run_id[0]
 
     async def stop_training(self, track_id: str) -> dict:
         """Stop a running training process via SIGINT.

@@ -131,7 +131,7 @@ def write_manifest(
     manifest_dict = {
         "schema_version": manifest.schema_version,
         "config": manifest.config,
-        "mlx_forge_version": manifest.mlxforge_version,
+        "mlx_forge_version": manifest.mlx_forge_version,
         "mlx_version": manifest.mlx_version,
         "python_version": manifest.python_version,
         "hardware": {
@@ -151,7 +151,7 @@ def write_manifest(
     env_dict = {
         "python_version": env_info.python_version,
         "mlx_version": env_info.mlx_version,
-        "mlx_forge_version": env_info.mlxforge_version,
+        "mlx_forge_version": env_info.mlx_forge_version,
         "platform": env_info.platform,
         "os_version": env_info.os_version,
         "chip": env_info.chip,

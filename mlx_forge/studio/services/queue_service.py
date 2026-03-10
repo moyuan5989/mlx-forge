@@ -160,15 +160,17 @@ class QueueService:
             from mlx_forge.studio.services.training_service import TrainingService
             service = TrainingService()
             result = await service.start_training(job.config)
-            job.run_id = result.get("track_id")
+            job.run_id = result.get("track_id")  # temporary until we get real run_id
 
             # Wait for the training subprocess to actually finish
             proc = result.get("_process")
             if proc is not None:
-                returncode, stderr = await service.wait_for_completion(proc)
+                returncode, stderr, run_id = await service.wait_for_completion(proc)
+                # Use the real experiment run_id if captured from stdout
+                if run_id:
+                    job.run_id = run_id
                 if returncode != 0:
                     job.status = JobStatus.FAILED
-                    # Capture last few lines of stderr for error context
                     error_lines = stderr.strip().split("\n")[-5:]
                     job.error = "\n".join(error_lines) if error_lines else f"Process exited with code {returncode}"
                 else:
