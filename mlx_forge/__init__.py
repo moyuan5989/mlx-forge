@@ -1,11 +1,13 @@
 """MLX Forge — LoRA SFT training framework for MLX on Apple Silicon."""
 
 import json
-import logging
+import os
 from pathlib import Path
 
-# Suppress "PyTorch was not found..." warning emitted during transformers import
-logging.getLogger("transformers").setLevel(logging.ERROR)
+# Suppress "PyTorch was not found..." warning emitted during transformers import.
+# transformers overrides logger config internally, so the env var is the only
+# reliable way to control verbosity before the library initializes.
+os.environ.setdefault("TRANSFORMERS_VERBOSITY", "error")
 
 from transformers import AutoTokenizer  # noqa: E402
 
