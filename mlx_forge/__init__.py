@@ -151,6 +151,14 @@ def train(config, resume: str | None = None):  # -> TrainState
     if isinstance(config, str):
         config = TrainingConfig.from_yaml(config)
 
+    import mlx.core as mx
+
+    # Set wired memory limit early, before loading model weights
+    if mx.metal.is_available():
+        device_info = mx.device_info()
+        if "max_recommended_working_set_size" in device_info:
+            mx.set_wired_limit(device_info["max_recommended_working_set_size"])
+
     print("MLX Forge v0 — Training")
     print(f"Model: {config.model.path}")
     print(f"Adapter: {config.adapter.method} (rank={config.adapter.rank})")
@@ -206,6 +214,12 @@ def train(config, resume: str | None = None):  # -> TrainState
         print(f"Quantized to {config.model.quantization.bits}-bit "
               f"(group_size={config.model.quantization.group_size})")
         print()
+
+    # Freeze base model before applying LoRA — only LoRA params should be trainable.
+    # For QLoRA, quantize_model() already calls model.freeze(). For fp16 LoRA, we
+    # need to freeze explicitly. apply_lora() then creates new unfrozen LoRA params.
+    if not config.model.quantization:
+        model.freeze()
 
     # Apply LoRA adapters
     print("Applying LoRA adapters...")

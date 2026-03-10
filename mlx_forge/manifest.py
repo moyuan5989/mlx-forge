@@ -62,7 +62,7 @@ def collect_environment() -> EnvironmentInfo:
     gpu_cores = 0
 
     if mx.metal.is_available():
-        device_info = mx.metal.device_info()
+        device_info = mx.device_info()
         chip = device_info.get("device_name", chip)
         gpu_cores = device_info.get("gpu_cores", 0)
 

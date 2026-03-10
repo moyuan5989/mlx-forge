@@ -107,7 +107,7 @@ class BaseTrainer:
     def fit(self) -> TrainState:
         """Run the full training loop. Returns final TrainState."""
         if mx.metal.is_available():
-            device_info = mx.metal.device_info()
+            device_info = mx.device_info()
             if "max_recommended_working_set_size" in device_info:
                 mx.set_wired_limit(device_info["max_recommended_working_set_size"])
 

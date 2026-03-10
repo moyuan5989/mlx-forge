@@ -315,9 +315,11 @@ def gated_delta_chunkwise(
         cum_log_g = mx.cumsum(log_g, axis=-1)  # (B, Hv, C)
 
         # decay_mask[i, j] = exp(cum_log_g[i] - cum_log_g[j]) for i >= j
-        decay_mask = mx.exp(
-            cum_log_g[:, :, :, None] - cum_log_g[:, :, None, :]
-        ) * causal_mask  # (B, Hv, C, C)
+        # Apply causal mask BEFORE exp to avoid inf*0=nan:
+        # set upper-triangle positions to -inf so exp(-inf)=0
+        log_decay = cum_log_g[:, :, :, None] - cum_log_g[:, :, None, :]
+        log_decay = mx.where(causal_mask, log_decay, -float("inf"))
+        decay_mask = mx.exp(log_decay)  # (B, Hv, C, C)
 
         # Scale attention by decay and beta
         attn = attn * decay_mask * beta_h[:, :, None, :]  # (B, Hv, C, C)
@@ -330,7 +332,8 @@ def gated_delta_chunkwise(
 
         # Apply per-position decay to state contribution
         # Position i sees state decayed by product(g[0..i])
-        pos_decay = mx.exp(cum_log_g)  # (B, Hv, C)
+        # Clamp to avoid overflow in exp (values < -87 already give ~0 in float32)
+        pos_decay = mx.exp(mx.clip(cum_log_g, a_min=-80.0, a_max=0.0))  # (B, Hv, C)
         inter = (q_h @ state_t) * pos_decay[:, :, :, None]  # (B, Hv, C, Dv)
 
         # Combine — already in (B, Hv, C, Dv)
@@ -339,12 +342,14 @@ def gated_delta_chunkwise(
 
         # --- 3. Update state for next chunk ---
         # Decay state by full chunk's cumulative decay
-        chunk_total_decay = mx.exp(cum_log_g[:, :, -1])  # (B, Hv)
+        # Clamp to avoid underflow (exp(-304) ≈ 0 in float32 anyway)
+        chunk_total_decay = mx.exp(mx.clip(cum_log_g[:, :, -1], a_min=-80.0, a_max=0.0))  # (B, Hv)
         state = state * chunk_total_decay[:, :, None, None]
 
         # Add contribution from this chunk's key-value pairs
         # Each timestep contributes: beta * v outer k, decayed to end of chunk
         # Decay from position t to end: exp(cum_log_g[-1] - cum_log_g[t])
+        # This diff is always <= 0 (later positions have more cumulative decay)
         end_decay = mx.exp(
             cum_log_g[:, :, -1:] - cum_log_g
         )  # (B, Hv, C)

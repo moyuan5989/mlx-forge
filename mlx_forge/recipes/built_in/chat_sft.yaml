@@ -33,7 +33,7 @@ config_template:
     optimizer: "adam"
     learning_rate: 2.0e-5
     num_iters: 1000
-    batch_size: 4
+    batch_size: 2
     steps_per_report: 10
     steps_per_eval: 100
     steps_per_save: 100

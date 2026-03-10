@@ -117,7 +117,7 @@ class DataConfig(BaseModel):
 class TrainingParams(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    batch_size: int = 4
+    batch_size: int = 2
     num_iters: int = 1000
     learning_rate: float = 1e-5
     optimizer: Literal["adam", "adamw", "sgd", "adafactor"] = "adam"

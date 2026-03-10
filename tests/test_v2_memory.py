@@ -69,16 +69,16 @@ class TestMemoryEstimation:
 
     def test_estimate_known_model(self):
         """Estimation for known model returns valid result."""
-        hw = HardwareProfile(total_memory_gb=36.0, training_budget_gb=27.0)
+        hw = HardwareProfile(total_memory_gb=64.0, training_budget_gb=48.0)
         est = estimate_memory("Qwen/Qwen3-0.6B", hardware=hw)
 
         assert est.base_weights_gb > 0
         assert est.total_gb > 0
-        assert est.fits is True  # 0.6B should fit on 36GB
+        assert est.fits is True  # 0.6B should fit on 64GB
 
     def test_estimate_qlora_reduces_memory(self):
         """QLoRA reduces base weights memory significantly."""
-        hw = HardwareProfile(total_memory_gb=36.0, training_budget_gb=27.0)
+        hw = HardwareProfile(total_memory_gb=64.0, training_budget_gb=48.0)
 
         fp16 = estimate_memory("meta-llama/Llama-3.1-8B", hardware=hw)
         qlora = estimate_memory("meta-llama/Llama-3.1-8B", quantization_bits=4, hardware=hw)
@@ -88,7 +88,7 @@ class TestMemoryEstimation:
 
     def test_estimate_gradient_checkpointing_reduces_activations(self):
         """Gradient checkpointing reduces peak activation memory."""
-        hw = HardwareProfile(total_memory_gb=36.0, training_budget_gb=27.0)
+        hw = HardwareProfile(total_memory_gb=64.0, training_budget_gb=48.0)
 
         without = estimate_memory("Qwen/Qwen3-4B", hardware=hw)
         with_ckpt = estimate_memory(
@@ -103,7 +103,7 @@ class TestMemoryEstimation:
 
     def test_memory_bar_segments(self):
         """Memory estimate produces valid bar segments."""
-        hw = HardwareProfile(total_memory_gb=36.0, training_budget_gb=27.0)
+        hw = HardwareProfile(total_memory_gb=64.0, training_budget_gb=48.0)
         est = estimate_memory("Qwen/Qwen3-0.6B", hardware=hw)
 
         segments = est.bar_segments()
@@ -124,13 +124,20 @@ class TestMemoryEstimation:
     def test_fits_flag(self):
         """fits flag correctly reflects budget comparison."""
         hw_small = HardwareProfile(total_memory_gb=8.0, training_budget_gb=6.0)
-        hw_big = HardwareProfile(total_memory_gb=128.0, training_budget_gb=96.0)
+        hw_big = HardwareProfile(total_memory_gb=192.0, training_budget_gb=144.0)
 
         est_small = estimate_memory("meta-llama/Llama-3.1-8B", hardware=hw_small)
         est_big = estimate_memory("meta-llama/Llama-3.1-8B", hardware=hw_big)
 
         assert est_small.fits is False  # 8B won't fit in 6GB
-        assert est_big.fits is True  # 8B will fit in 96GB
+        assert est_big.fits is True  # 8B will fit in 144GB
+
+    def test_small_model_with_checkpointing_fits(self):
+        """Small model with gradient checkpointing fits on modest hardware."""
+        hw = HardwareProfile(total_memory_gb=36.0, training_budget_gb=27.0)
+        est = estimate_memory(
+            "Qwen/Qwen3-0.6B", gradient_checkpointing=True, batch_size=2, hardware=hw)
+        assert est.fits is True
 
 
 class TestCompatibleModels:
@@ -138,7 +145,7 @@ class TestCompatibleModels:
 
     def test_returns_models(self):
         """get_compatible_models returns a non-empty list."""
-        hw = HardwareProfile(total_memory_gb=36.0, training_budget_gb=27.0)
+        hw = HardwareProfile(total_memory_gb=64.0, training_budget_gb=48.0)
         models = get_compatible_models(hw)
         assert len(models) > 0
 
@@ -152,7 +159,7 @@ class TestCompatibleModels:
 
     def test_models_have_estimates(self):
         """Each model has fp16 and qlora estimates."""
-        hw = HardwareProfile(total_memory_gb=36.0, training_budget_gb=27.0)
+        hw = HardwareProfile(total_memory_gb=64.0, training_budget_gb=48.0)
         models = get_compatible_models(hw)
 
         for m in models:
@@ -162,8 +169,8 @@ class TestCompatibleModels:
             assert "fits" in m["fp16"]
 
     def test_some_models_comfortable(self):
-        """At least one model is a comfortable fit for 36GB."""
-        hw = HardwareProfile(total_memory_gb=36.0, training_budget_gb=27.0)
+        """At least one model is a comfortable fit for 64GB."""
+        hw = HardwareProfile(total_memory_gb=64.0, training_budget_gb=48.0)
         models = get_compatible_models(hw)
         comfortable = [m for m in models if m["fit_level"] == "comfortable"]
         assert len(comfortable) > 0
@@ -178,21 +185,28 @@ class TestAutoConfiguration:
         assert "model.quantization" in overrides
         assert overrides["model.quantization"]["bits"] == 4
 
-    def test_low_memory_enables_grad_checkpoint(self):
-        """< 16GB enables gradient checkpointing."""
+    def test_always_enables_grad_checkpoint(self):
+        """Gradient checkpointing is always enabled as safety default."""
         overrides = auto_configure("Qwen/Qwen3-4B", system_memory_gb=12)
         assert overrides.get("training.gradient_checkpointing") is True
 
-    def test_medium_memory_qlora_only(self):
-        """16-32GB enables QLoRA but not checkpointing."""
+        overrides = auto_configure("Qwen/Qwen3-4B", system_memory_gb=64)
+        assert overrides.get("training.gradient_checkpointing") is True
+
+    def test_medium_memory_enables_qlora(self):
+        """16-32GB enables QLoRA."""
         overrides = auto_configure("Qwen/Qwen3-4B", system_memory_gb=24)
         assert "model.quantization" in overrides
-        assert "training.gradient_checkpointing" not in overrides
 
     def test_high_memory_no_qlora(self):
         """> 32GB doesn't trigger QLoRA."""
         overrides = auto_configure("Qwen/Qwen3-4B", system_memory_gb=64)
         assert "model.quantization" not in overrides
+
+    def test_auto_batch_size(self):
+        """Auto-configure selects batch_size that fits."""
+        overrides = auto_configure("Qwen/Qwen3-0.6B", system_memory_gb=64)
+        assert overrides["training.batch_size"] >= 2
 
     def test_small_dataset_reduces_iters(self):
         """< 500 samples reduces num_iters."""

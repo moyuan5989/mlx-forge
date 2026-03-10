@@ -228,18 +228,24 @@ def estimate_memory(
     # 3. Optimizer state: Adam has 2 states (m, v) per trainable param
     optimizer_state_gb = 2 * lora_overhead_gb
 
-    # 4. Peak activations
+    # 4. Peak activations (forward + backward)
+    # Per-layer activation memory: QKV projections, attention output, MLP intermediates,
+    # plus backward pass storage for gradient computation.
+    # Uses 8x multiplier on (B * T * D * bytes) per layer to account for:
+    #   - Multiple intermediate tensors (Q, K, V, attn_out, MLP up/gate/down)
+    #   - Backward pass storing activations for gradient computation
+    #   - Float32 upcast in some architectures (e.g., DeltaNet in Qwen3.5)
     bytes_per_element = 2  # fp16
+
     if gradient_checkpointing:
-        # With checkpointing: ~sqrt(layers) layers stored
+        # With checkpointing: ~sqrt(layers) layers stored; rest recomputed
         effective_layers = math.sqrt(profile.num_layers)
     else:
         effective_layers = profile.num_layers
 
-    # Rough estimate: batch * seq_len * hidden_dim * bytes * layers * ~3.5x overhead
     peak_activations_gb = (
         batch_size * max_seq_length * profile.hidden_dim
-        * bytes_per_element * effective_layers * 3.5
+        * bytes_per_element * effective_layers * 8
     ) / (1024 ** 3)
 
     estimate = MemoryEstimate(
@@ -301,32 +307,45 @@ def auto_configure(
     system_memory_gb: Optional[float] = None,
     dataset_samples: Optional[int] = None,
 ) -> dict:
-    """Auto-configure training parameters based on hardware and dataset.
+    """Auto-configure training parameters based on hardware, model, and dataset.
+
+    Uses memory estimation to find the largest batch_size that fits.
 
     Returns a dict of recommended config overrides.
-
-    Rules:
-    - if system_memory_gb < 16: enable QLoRA + gradient_checkpointing + batch_size=1
-    - if system_memory_gb < 32: enable QLoRA
-    - if dataset_samples < 500: reduce num_iters to 500
-    - if dataset_samples > 10000: enable packing
     """
     if system_memory_gb is None:
         hw = HardwareProfile.detect()
         system_memory_gb = hw.total_memory_gb
 
+    hw = HardwareProfile(
+        total_memory_gb=system_memory_gb,
+        training_budget_gb=system_memory_gb * 0.75,
+    )
+
     overrides = {}
 
-    # Memory-based rules
+    # Step 1: Determine quantization based on memory tier
+    use_qlora = system_memory_gb < 32
+    if use_qlora:
+        overrides["model.quantization"] = {"bits": 4, "group_size": 64}
+
+    quant_bits = 4 if use_qlora else None
+
+    # Step 2: Choose batch_size and enable gradient checkpointing
+    # Always enable gradient checkpointing (~10-15% slower but prevents OOM,
+    # especially critical for hybrid architectures like Qwen3.5 DeltaNet).
+    # Cap batch_size at 2 for safety — MLX compilation and graph overhead
+    # make batch_size=4 unreliable on most hardware.
     if system_memory_gb < 16:
-        overrides["model.quantization"] = {"bits": 4, "group_size": 64}
-        overrides["training.gradient_checkpointing"] = True
-        overrides["training.batch_size"] = 1
-        overrides["training.grad_accumulation_steps"] = 8
-    elif system_memory_gb < 32:
-        overrides["model.quantization"] = {"bits": 4, "group_size": 64}
-        overrides["training.batch_size"] = 2
-        overrides["training.grad_accumulation_steps"] = 4
+        chosen_batch = 1
+    elif system_memory_gb < 48:
+        chosen_batch = 2
+    else:
+        chosen_batch = 2  # even on large systems, batch=2 is safer
+
+    overrides["training.batch_size"] = chosen_batch
+    overrides["training.gradient_checkpointing"] = True
+    overrides["training.grad_accumulation_steps"] = 4 // chosen_batch
 
     # Dataset-based rules
     if dataset_samples is not None:
