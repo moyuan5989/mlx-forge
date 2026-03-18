@@ -195,7 +195,7 @@ class TestGGUFWriter:
         from mlx_forge.export.gguf_writer import convert_to_gguf
         model_dir = self._create_model_dir(tmp_path)
         with pytest.raises(ValueError, match="Unsupported quantization"):
-            convert_to_gguf(model_dir, tmp_path / "out.gguf", quantization="q4_0")
+            convert_to_gguf(model_dir, tmp_path / "out.gguf", quantization="q3_k")
 
     def test_output_dir_created(self, tmp_path):
         from mlx_forge.export.gguf_writer import convert_to_gguf

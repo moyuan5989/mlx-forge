@@ -48,6 +48,7 @@ class ModelConfig(BaseModel):
     trust_remote_code: bool = False
     revision: Optional[str] = None  # HF revision/commit hash (None = latest)
     quantization: Optional[QuantizationConfig] = None
+    vision: bool = False  # Vision model support (M32/M34)
 
 
 class AdapterConfig(BaseModel):
@@ -114,6 +115,9 @@ class DataConfig(BaseModel):
     hf_columns: Optional[dict[str, str]] = None
     hf_max_samples: Optional[int] = None
 
+    # Streaming data pipeline (M33)
+    streaming: bool = False
+
     @model_validator(mode="after")
     def validate_data_source(self) -> DataConfig:
         sources_count = sum([
@@ -151,7 +155,7 @@ class TrainingParams(BaseModel):
     keep_last_n_checkpoints: int = 3
 
     # V2: Training type and DPO parameters
-    training_type: Literal["sft", "dpo", "grpo"] = "sft"
+    training_type: Literal["sft", "dpo", "grpo", "orpo", "kto", "simpo"] = "sft"
     dpo_beta: float = 0.1
     dpo_reference_free: bool = True
 
@@ -161,6 +165,16 @@ class TrainingParams(BaseModel):
     grpo_clip_range: float = 0.2
     grpo_max_completion_length: int = 256
     grpo_reward_function: str = "length"
+
+    # ORPO parameters
+    orpo_beta: float = 0.1
+
+    # KTO parameters
+    kto_beta: float = 0.1
+
+    # SimPO parameters
+    simpo_beta: float = 2.0
+    simpo_gamma: float = 0.5
 
     @model_validator(mode="after")
     def validate_save_accum(self) -> TrainingParams:

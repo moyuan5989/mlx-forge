@@ -8,6 +8,36 @@ training on ALL assistant turns in multi-turn conversations.
 from __future__ import annotations
 
 
+def tokenize_single(
+    sample: dict,
+    tokenizer,
+    *,
+    max_seq_length: int = 2048,
+    mask_prompt: bool = True,
+) -> dict | None:
+    """Tokenize a single sample, auto-detecting format.
+
+    Returns dict with "input_ids" and "labels" keys, or None on failure.
+    Used by streaming data pipeline for on-the-fly tokenization.
+    """
+    from mlx_forge.data.formats import detect_format
+
+    try:
+        fmt = detect_format([sample])
+    except ValueError:
+        return None
+
+    if fmt == "chat":
+        return _tokenize_chat(sample, tokenizer, mask_prompt, max_seq_length)
+    elif fmt == "completions":
+        return _tokenize_completions(sample, tokenizer, mask_prompt, max_seq_length)
+    elif fmt == "text" or fmt == "kto":
+        return _tokenize_text(sample, tokenizer, max_seq_length)
+    elif fmt == "preference":
+        return _tokenize_preference(sample, tokenizer, mask_prompt, max_seq_length)
+    return None
+
+
 def tokenize_dataset(
     samples: list[dict],
     tokenizer,

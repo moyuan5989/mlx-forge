@@ -40,19 +40,30 @@ class GRPOTrainer(BaseTrainer):
         # Reward function
         self.reward_fn = get_reward_function(config.training.grpo_reward_function)
 
-        # Store reference log probs (computed from initial LoRA weights)
-        self._ref_model_state = None
-
-    def _save_ref_state(self):
-        """Save a copy of the current trainable parameters as reference."""
-        self._ref_model_state = {
-            k: v.copy() for k, v in dict(tree_flatten(self.model.trainable_parameters())).items()
+        # Save frozen copy of initial trainable parameters for reference policy
+        self._ref_weights = {
+            k: mx.array(v) for k, v in
+            dict(tree_flatten(model.trainable_parameters())).items()
         }
 
-    def _load_ref_state(self):
-        """Temporarily load reference state for KL computation."""
-        current = dict(tree_flatten(self.model.trainable_parameters()))
-        return current, self._ref_model_state
+    def _compute_ref_log_probs(self, input_ids, labels):
+        """Swap in frozen weights, compute log probs, swap back."""
+        current = {
+            k: v for k, v in
+            dict(tree_flatten(self.model.trainable_parameters())).items()
+        }
+        self.model.load_weights(list(self._ref_weights.items()), strict=False)
+        mx.eval(self.model.parameters())
+
+        logits = self.model(input_ids)
+        log_probs = logits - mx.logsumexp(logits, axis=-1, keepdims=True)
+        ref_lps = mx.take_along_axis(
+            log_probs[0], labels[0, :, None], axis=-1
+        ).squeeze(-1)
+
+        self.model.load_weights(list(current.items()), strict=False)
+        mx.eval(self.model.parameters())
+        return mx.stop_gradient(ref_lps)
 
     def _build_step_functions(self, compile_state, apply_grad_update):
         """Build GRPO step function."""
@@ -120,15 +131,15 @@ class GRPOTrainer(BaseTrainer):
 
                 # Current policy log probs
                 logits = model(input_ids)
-                log_probs = mx.log_softmax(logits, axis=-1)
+                log_probs = logits - mx.logsumexp(logits, axis=-1, keepdims=True)
 
                 # Gather token log probs
                 token_lps = mx.take_along_axis(
                     log_probs[0], labels[0, :, None], axis=-1
                 ).squeeze(-1)
 
-                # Reference log probs (use detached current as approximation)
-                ref_lps = mx.stop_gradient(token_lps)
+                # Reference log probs from frozen reference model
+                ref_lps = self._compute_ref_log_probs(input_ids, labels)
 
                 # Per-token GRPO loss
                 ratio = mx.exp(token_lps - ref_lps)

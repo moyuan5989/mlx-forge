@@ -79,7 +79,7 @@ def compute_log_probs(
         Log probs for each position, shape (B, T)
     """
     logits = model(input_ids)  # (B, T, V)
-    log_probs = mx.log_softmax(logits, axis=-1)
+    log_probs = logits - mx.logsumexp(logits, axis=-1, keepdims=True)
 
     # Gather log probs for target tokens
     # labels shape: (B, T), need to gather from (B, T, V)

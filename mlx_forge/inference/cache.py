@@ -69,6 +69,10 @@ class KVCache:
             self.offset = self.keys.shape[2]
             return self.keys, self.values
 
+    def trim(self, n: int):
+        """Remove last n tokens from cache (for speculative decoding rewind)."""
+        self.offset = max(0, self.offset - n)
+
     def reset(self):
         """Clear the cache."""
         self.keys = None
@@ -110,6 +114,28 @@ class RecurrentCache:
     @ssm_state.setter
     def ssm_state(self, v: Optional[mx.array]):
         self.cache[1] = v
+
+
+class ArraysCache:
+    """Generic array cache for SSM/recurrent layers.
+
+    Stores an arbitrary number of state arrays per layer.
+    Used by Mamba and other non-attention architectures.
+    """
+
+    def __init__(self, size: int = 2):
+        self.cache: list[Optional[mx.array]] = [None] * size
+        self.offset: int = 0
+
+    def __getitem__(self, idx):
+        return self.cache[idx]
+
+    def __setitem__(self, idx, value):
+        self.cache[idx] = value
+
+    def trim(self, n: int):
+        """Remove last n steps from cache."""
+        self.offset = max(0, self.offset - n)
 
 
 def make_cache(num_layers: int, *, max_size: int = 0) -> list[KVCache]:

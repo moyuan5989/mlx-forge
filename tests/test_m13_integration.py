@@ -689,7 +689,7 @@ class TestArchitectureSupport:
             assert is_supported(arch), f"Architecture {arch} should be supported"
 
         # Unsupported architectures
-        unsupported = ["deepseek_v3", "unknown_model", "gpt2"]
+        unsupported = ["unknown_model", "gpt2"]
         for arch in unsupported:
             assert not is_supported(arch), f"Architecture {arch} should not be supported"
 

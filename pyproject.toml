@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mlx-forge"
-version = "0.5.0"
+version = "0.6.0"
 description = "Fine-tune, experiment with, and run LLMs locally on your Mac"
 license = "MIT"
 readme = "README.md"
@@ -57,8 +57,11 @@ docs = [
     "mkdocs>=1.5",
     "mkdocs-material>=9.0",
 ]
+vision = [
+    "mlx-vlm>=0.4.0",
+]
 all = [
-    "mlx-forge[wandb,docs]",
+    "mlx-forge[wandb,docs,vision]",
 ]
 
 [project.urls]

@@ -376,7 +376,31 @@ def train(config, resume: str | None = None):  # -> TrainState
         except ImportError:
             print("Warning: wandb not installed, skipping WandB logging")
 
-    # Create trainer (SFT, DPO, or GRPO based on training_type)
+    # Handle streaming data if configured (M33)
+    if config.data.streaming:
+        from mlx_forge.data.streaming import StreamingHFDataset, StreamingJSONLDataset
+
+        if config.data.hf_dataset:
+            train_dataset = StreamingHFDataset(
+                config.data.hf_dataset,
+                split=config.data.hf_split,
+                tokenizer=tokenizer,
+                subset=config.data.hf_subset,
+                columns=config.data.hf_columns,
+                max_seq_length=config.data.max_seq_length,
+                mask_prompt=config.data.mask_prompt,
+            )
+            print("Using streaming HF dataset")
+        elif config.data.train:
+            train_dataset = StreamingJSONLDataset(
+                config.data.train,
+                tokenizer=tokenizer,
+                max_seq_length=config.data.max_seq_length,
+                mask_prompt=config.data.mask_prompt,
+            )
+            print("Using streaming JSONL dataset")
+
+    # Create trainer (SFT, DPO, GRPO, ORPO, KTO, or SimPO based on training_type)
     if config.training.training_type == "grpo":
         from mlx_forge.trainer.grpo_trainer import GRPOTrainer
         trainer = GRPOTrainer(
@@ -391,6 +415,36 @@ def train(config, resume: str | None = None):  # -> TrainState
     elif config.training.training_type == "dpo":
         from mlx_forge.trainer.dpo_trainer import DPOTrainer
         trainer = DPOTrainer(
+            model=model,
+            config=config,
+            train_dataset=train_dataset,
+            val_dataset=val_dataset,
+            callbacks=callbacks,
+            checkpoint_manager=manager,
+        )
+    elif config.training.training_type == "orpo":
+        from mlx_forge.trainer.orpo_trainer import ORPOTrainer
+        trainer = ORPOTrainer(
+            model=model,
+            config=config,
+            train_dataset=train_dataset,
+            val_dataset=val_dataset,
+            callbacks=callbacks,
+            checkpoint_manager=manager,
+        )
+    elif config.training.training_type == "kto":
+        from mlx_forge.trainer.kto_trainer import KTOTrainer
+        trainer = KTOTrainer(
+            model=model,
+            config=config,
+            train_dataset=train_dataset,
+            val_dataset=val_dataset,
+            callbacks=callbacks,
+            checkpoint_manager=manager,
+        )
+    elif config.training.training_type == "simpo":
+        from mlx_forge.trainer.simpo_trainer import SimPOTrainer
+        trainer = SimPOTrainer(
             model=model,
             config=config,
             train_dataset=train_dataset,

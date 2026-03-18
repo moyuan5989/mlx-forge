@@ -44,6 +44,18 @@ GGML_TYPE_SIZE = {
     GGMLType.Q8_0: 1 + 2/32,    # block size 32
 }
 
+# Block sizes for quantized types
+GGML_BLOCK_SIZE = {
+    GGMLType.Q4_0: 32,
+    GGMLType.Q8_0: 32,
+}
+
+# Bytes per block for quantized types
+GGML_TYPE_BYTES_PER_BLOCK = {
+    GGMLType.Q4_0: 18,   # 2 (fp16 scale) + 16 (packed 4-bit data)
+    GGMLType.Q8_0: 34,   # 2 (fp16 scale) + 32 (int8 data)
+}
+
 # Standard metadata keys
 METADATA_KEYS = {
     "general.architecture": "general.architecture",

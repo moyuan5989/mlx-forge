@@ -127,6 +127,27 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Trust remote code when loading tokenizer",
     )
+    gen_parser.add_argument(
+        "--draft-model",
+        default=None,
+        help="Draft model for speculative decoding",
+    )
+    gen_parser.add_argument(
+        "--num-draft",
+        type=int,
+        default=5,
+        help="Draft tokens per speculative decoding step (default: 5)",
+    )
+    gen_parser.add_argument(
+        "--prompt-cache",
+        default=None,
+        help="Path to prompt cache file (save/load KV cache state)",
+    )
+    gen_parser.add_argument(
+        "--vision",
+        action="store_true",
+        help="Enable vision model support (requires mlx-vlm)",
+    )
 
     # --- data ---
     data_parser = subparsers.add_parser(
@@ -238,6 +259,12 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Create private HuggingFace repository",
     )
+    export_parser.add_argument(
+        "--quantize",
+        choices=["f16", "f32", "q8_0", "q4_0"],
+        default=None,
+        help="Quantize GGUF output (requires --format gguf)",
+    )
 
     # --- studio ---
     studio_parser = subparsers.add_parser(
@@ -281,6 +308,23 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=8000,
         help="Port number (default: 8000)",
+    )
+    serve_parser.add_argument(
+        "--draft-model",
+        default=None,
+        help="Draft model for speculative decoding",
+    )
+    serve_parser.add_argument(
+        "--vision",
+        action="store_true",
+        help="Enable vision model support (requires mlx-vlm)",
+    )
+
+    # --- train (add --vision flag) ---
+    train_parser.add_argument(
+        "--vision",
+        action="store_true",
+        help="Enable vision model training (requires mlx-vlm)",
     )
 
     return parser

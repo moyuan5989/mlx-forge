@@ -135,9 +135,10 @@ def run_export(args) -> None:
     # GGUF conversion if requested
     if getattr(args, "format", "safetensors") == "gguf":
         from mlx_forge.export.gguf_writer import convert_to_gguf
+        quantize = getattr(args, "quantize", None) or "f16"
         gguf_output = Path(output_dir) / "model.gguf"
-        print(f"\nConverting to GGUF: {gguf_output}")
-        convert_to_gguf(output_dir, gguf_output)
+        print(f"\nConverting to GGUF: {gguf_output} (quantization: {quantize})")
+        convert_to_gguf(output_dir, gguf_output, quantization=quantize)
 
     # Push to HuggingFace Hub if requested
     if getattr(args, "push_to_hub", None):

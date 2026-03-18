@@ -14,7 +14,6 @@ import numpy as np
 from mlx_forge.export.gguf_constants import (
     GGUF_MAGIC,
     GGUF_VERSION,
-    GGMLType,
     GGUFValueType,
 )
 from mlx_forge.export.weight_mapping import (
@@ -35,7 +34,7 @@ def convert_to_gguf(
     Args:
         model_dir: Directory containing model.safetensors and config.json
         output_path: Output GGUF file path
-        quantization: Quantization type ("f16" or "f32")
+        quantization: Quantization type ("f16", "f32", "q4_0", "q8_0")
 
     Returns:
         Path to the output GGUF file.
@@ -62,15 +61,22 @@ def convert_to_gguf(
 
     gguf_arch = GGUF_ARCH_NAMES[model_type]
 
-    # Determine tensor type
-    if quantization == "f16":
-        ggml_type = GGMLType.F16
-        np_dtype = np.float16
-    elif quantization == "f32":
-        ggml_type = GGMLType.F32
-        np_dtype = np.float32
+    # Determine tensor type and quantization function
+    from mlx_forge.export.quantize import QUANTIZATION_TYPES
+
+    if quantization not in QUANTIZATION_TYPES:
+        raise ValueError(
+            f"Unsupported quantization: {quantization}. "
+            f"Supported: {list(QUANTIZATION_TYPES.keys())}"
+        )
+
+    ggml_type, quantize_fn = QUANTIZATION_TYPES[quantization]
+
+    if quantize_fn is None:
+        # Float formats
+        np_dtype = np.float16 if quantization == "f16" else np.float32
     else:
-        raise ValueError(f"Unsupported quantization: {quantization}. Use 'f16' or 'f32'.")
+        np_dtype = None  # Will quantize from float32
 
     # Load weights
     from safetensors import safe_open
@@ -91,9 +97,13 @@ def convert_to_gguf(
             print(f"  Warning: skipping unmapped weight '{mlx_name}'")
             continue
 
-        # Convert to target dtype
-        data = array.astype(np_dtype)
-        tensors.append((gguf_name, data, ggml_type))
+        # Convert / quantize tensor data
+        if quantize_fn is not None:
+            tensor_data = quantize_fn(array.astype(np.float32))
+            tensors.append((gguf_name, array.shape, tensor_data, ggml_type))
+        else:
+            data = array.astype(np_dtype)
+            tensors.append((gguf_name, array.shape, data.tobytes(), ggml_type))
 
     # Build metadata
     metadata = _build_metadata(config, gguf_arch, quantization)
@@ -126,8 +136,9 @@ def _build_metadata(config: dict, arch: str, quantization: str) -> list[tuple]:
     metadata.append(("general.architecture", GGUFValueType.STRING, arch))
     metadata.append(("general.name", GGUFValueType.STRING, config.get("_name_or_path", "mlx-forge-model")))
 
-    # File type
-    file_type = 1 if quantization == "f16" else 0  # 0=F32, 1=F16
+    # File type: 0=F32, 1=F16, 2=Q4_0, 7=Q8_0
+    file_type_map = {"f32": 0, "f16": 1, "q4_0": 2, "q8_0": 7}
+    file_type = file_type_map.get(quantization, 1)
     metadata.append(("general.file_type", GGUFValueType.UINT32, file_type))
 
     # Architecture-specific metadata
@@ -198,18 +209,18 @@ def _write_gguf(output_path: Path, metadata: list[tuple], tensors: list[tuple]) 
         # Tensor info
         data_offset = 0
         tensor_infos = []
-        for name, data, ggml_type in tensors:
+        for name, shape, raw_data, ggml_type in tensors:
             _write_string(f, name)
-            ndims = len(data.shape)
+            ndims = len(shape)
             f.write(struct.pack("<I", ndims))
-            for dim in data.shape:
+            for dim in shape:
                 f.write(struct.pack("<Q", dim))
             f.write(struct.pack("<I", ggml_type))
             f.write(struct.pack("<Q", data_offset))
 
             # Calculate data size with alignment
-            data_size = data.nbytes
-            tensor_infos.append((data, data_size))
+            data_size = len(raw_data) if isinstance(raw_data, (bytes, bytearray)) else len(raw_data)
+            tensor_infos.append((raw_data, data_size))
             # Next tensor offset (aligned to 32 bytes)
             data_offset += data_size
             padding = (32 - data_offset % 32) % 32
@@ -221,8 +232,11 @@ def _write_gguf(output_path: Path, metadata: list[tuple], tensors: list[tuple]) 
         f.write(b"\x00" * padding)
 
         # Tensor data
-        for data, data_size in tensor_infos:
-            f.write(data.tobytes())
+        for raw_data, data_size in tensor_infos:
+            if isinstance(raw_data, (bytes, bytearray)):
+                f.write(raw_data)
+            else:
+                f.write(raw_data)
             # Pad to 32-byte alignment
             padding = (32 - data_size % 32) % 32
             f.write(b"\x00" * padding)

@@ -16,6 +16,11 @@ import mlx.nn as nn
 MODEL_REMAPPING = {
     "mistral": "llama",
     "llama3": "llama",
+    "gemma2": "gemma",
+    "gemma3": "gemma",
+    "falcon_mamba": "mamba",
+    "qwen2_5": "qwen2",
+    "deepseek": "llama",
 }
 
 # Explicit allowlist of supported architectures
@@ -28,8 +33,23 @@ SUPPORTED_ARCHITECTURES = {
     "qwen3": "mlx_forge.models.architectures.qwen3",
     "qwen3_5": "mlx_forge.models.architectures.qwen3_5",
     "gemma": "mlx_forge.models.architectures.gemma",
-    "gemma2": "mlx_forge.models.architectures.gemma",
-    "gemma3": "mlx_forge.models.architectures.gemma",
+    "mixtral": "mlx_forge.models.architectures.mixtral",
+    "deepseek_v2": "mlx_forge.models.architectures.deepseek_v2",
+    "deepseek_v3": "mlx_forge.models.architectures.deepseek_v3",
+    "cohere": "mlx_forge.models.architectures.cohere",
+    "cohere2": "mlx_forge.models.architectures.cohere2",
+    "llama4": "mlx_forge.models.architectures.llama4",
+    "mamba": "mlx_forge.models.architectures.mamba",
+    "mamba2": "mlx_forge.models.architectures.mamba2",
+    "jamba": "mlx_forge.models.architectures.jamba",
+    "falcon_h1": "mlx_forge.models.architectures.falcon_h1",
+    "olmo2": "mlx_forge.models.architectures.olmo2",
+    "internlm2": "mlx_forge.models.architectures.internlm2",
+    "starcoder2": "mlx_forge.models.architectures.starcoder2",
+    "glm4": "mlx_forge.models.architectures.glm4",
+    "granite": "mlx_forge.models.architectures.granite",
+    "stablelm": "mlx_forge.models.architectures.stablelm",
+    "openelm": "mlx_forge.models.architectures.openelm",
 }
 
 

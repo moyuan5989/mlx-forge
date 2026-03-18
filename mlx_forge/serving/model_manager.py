@@ -20,6 +20,8 @@ class ModelManager:
         self._model = None
         self._tokenizer = None
         self._model_id: Optional[str] = None
+        self._draft_model = None
+        self._draft_model_id: Optional[str] = None
 
     @property
     def model(self):
@@ -34,8 +36,20 @@ class ModelManager:
         return self._model_id
 
     @property
+    def draft_model(self):
+        return self._draft_model
+
+    @property
+    def draft_model_id(self) -> Optional[str]:
+        return self._draft_model_id
+
+    @property
     def is_loaded(self) -> bool:
         return self._model is not None
+
+    @property
+    def has_draft(self) -> bool:
+        return self._draft_model is not None
 
     def load(self, model_id: str, adapter: str | None = None) -> None:
         """Load a model. Unloads previous model first.
@@ -99,11 +113,24 @@ class ModelManager:
         )
         self._model_id = model_id
 
+    def load_draft(self, draft_model_id: str) -> None:
+        """Load a draft model for speculative decoding.
+
+        Args:
+            draft_model_id: HF model ID or local path for draft model
+        """
+        from mlx_forge.inference.engine import load_for_inference
+
+        self._draft_model, _ = load_for_inference(draft_model_id)
+        self._draft_model_id = draft_model_id
+
     def unload(self) -> None:
         """Free current model from memory."""
         self._model = None
         self._tokenizer = None
         self._model_id = None
+        self._draft_model = None
+        self._draft_model_id = None
 
     def list_available(self) -> list[dict]:
         """List available models from runs, exports, and HF cache."""

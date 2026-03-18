@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Literal
 
 
-def detect_format(samples: list[dict]) -> Literal["chat", "completions", "text", "preference"]:
+def detect_format(samples: list[dict]) -> Literal["chat", "completions", "text", "preference", "kto"]:
     """Auto-detect dataset format from the first sample's keys.
 
     - Has "chosen" and "rejected" -> preference format (DPO)
@@ -22,6 +22,8 @@ def detect_format(samples: list[dict]) -> Literal["chat", "completions", "text",
 
     if "chosen" in keys and "rejected" in keys:
         return "preference"
+    elif "text" in keys and "label" in keys:
+        return "kto"
     elif "messages" in keys:
         return "chat"
     elif "prompt" in keys and "completion" in keys:
@@ -52,9 +54,32 @@ def validate_samples(samples: list[dict], fmt: str) -> list[str]:
             errors.extend(_validate_text_sample(sample, idx))
         elif fmt == "preference":
             errors.extend(_validate_preference_sample(sample, idx))
+        elif fmt == "kto":
+            errors.extend(_validate_kto_sample(sample, idx))
         else:
             errors.append(f"Unknown format: {fmt}")
             break
+
+    return errors
+
+
+def _validate_kto_sample(sample: dict, idx: int) -> list[str]:
+    """Validate a single KTO format sample (unpaired preference)."""
+    errors = []
+
+    if "text" not in sample:
+        errors.append(f"Sample {idx}: missing 'text' field")
+    elif not isinstance(sample["text"], str):
+        errors.append(
+            f"Sample {idx}: 'text' must be a string, got {type(sample['text']).__name__}"
+        )
+
+    if "label" not in sample:
+        errors.append(f"Sample {idx}: missing 'label' field")
+    elif not isinstance(sample["label"], (int, float)):
+        errors.append(
+            f"Sample {idx}: 'label' must be numeric (0 or 1), got {type(sample['label']).__name__}"
+        )
 
     return errors
 

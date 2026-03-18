@@ -10,3 +10,8 @@ __all__ = [
     "scaled_dot_product_attention",
     "swiglu",
 ]
+
+# Lazy imports for optional base utilities
+# from .switch_layers import SwitchGLU, ExpertMLP  # MoE
+# from .ssm import MambaBlock, ssm_step, ssm_scan  # SSM
+# from .mla import MultiLatentAttention             # MLA

@@ -38,12 +38,108 @@ PHI3_WEIGHT_MAP = {
 # Qwen2 uses the same structure as Llama
 QWEN2_WEIGHT_MAP = LLAMA_WEIGHT_MAP.copy()
 
+# Cohere weight mapping (parallel attention, LayerNorm)
+COHERE_WEIGHT_MAP = {
+    "model.embed_tokens.weight": "token_embd.weight",
+    "model.norm.weight": "output_norm.weight",
+    "model.norm.bias": "output_norm.bias",
+    "lm_head.weight": "output.weight",
+    "model.layers.{i}.self_attn.q_proj.weight": "blk.{i}.attn_q.weight",
+    "model.layers.{i}.self_attn.k_proj.weight": "blk.{i}.attn_k.weight",
+    "model.layers.{i}.self_attn.v_proj.weight": "blk.{i}.attn_v.weight",
+    "model.layers.{i}.self_attn.o_proj.weight": "blk.{i}.attn_output.weight",
+    "model.layers.{i}.mlp.gate_proj.weight": "blk.{i}.ffn_gate.weight",
+    "model.layers.{i}.mlp.up_proj.weight": "blk.{i}.ffn_up.weight",
+    "model.layers.{i}.mlp.down_proj.weight": "blk.{i}.ffn_down.weight",
+    "model.layers.{i}.input_layernorm.weight": "blk.{i}.attn_norm.weight",
+    "model.layers.{i}.input_layernorm.bias": "blk.{i}.attn_norm.bias",
+}
+
+# Mixtral MoE weight mapping (base attention layers + expert routing)
+MIXTRAL_WEIGHT_MAP = {
+    "model.embed_tokens.weight": "token_embd.weight",
+    "model.norm.weight": "output_norm.weight",
+    "lm_head.weight": "output.weight",
+    "model.layers.{i}.self_attn.q_proj.weight": "blk.{i}.attn_q.weight",
+    "model.layers.{i}.self_attn.k_proj.weight": "blk.{i}.attn_k.weight",
+    "model.layers.{i}.self_attn.v_proj.weight": "blk.{i}.attn_v.weight",
+    "model.layers.{i}.self_attn.o_proj.weight": "blk.{i}.attn_output.weight",
+    "model.layers.{i}.block_sparse_moe.gate.weight": "blk.{i}.ffn_gate_inp.weight",
+    "model.layers.{i}.input_layernorm.weight": "blk.{i}.attn_norm.weight",
+    "model.layers.{i}.post_attention_layernorm.weight": "blk.{i}.ffn_norm.weight",
+}
+
+# InternLM2 weight mapping (fused wqkv)
+INTERNLM2_WEIGHT_MAP = {
+    "model.tok_embeddings.weight": "token_embd.weight",
+    "model.norm.weight": "output_norm.weight",
+    "output.weight": "output.weight",
+    "model.layers.{i}.attention.wqkv.weight": "blk.{i}.attn_qkv.weight",
+    "model.layers.{i}.attention.wo.weight": "blk.{i}.attn_output.weight",
+    "model.layers.{i}.feed_forward.w1.weight": "blk.{i}.ffn_gate.weight",
+    "model.layers.{i}.feed_forward.w3.weight": "blk.{i}.ffn_up.weight",
+    "model.layers.{i}.feed_forward.w2.weight": "blk.{i}.ffn_down.weight",
+    "model.layers.{i}.attention_norm.weight": "blk.{i}.attn_norm.weight",
+    "model.layers.{i}.ffn_norm.weight": "blk.{i}.ffn_norm.weight",
+}
+
+# GLM4 weight mapping (fused QKV)
+GLM4_WEIGHT_MAP = {
+    "model.embed_tokens.weight": "token_embd.weight",
+    "model.norm.weight": "output_norm.weight",
+    "lm_head.weight": "output.weight",
+    "model.layers.{i}.self_attn.qkv_proj.weight": "blk.{i}.attn_qkv.weight",
+    "model.layers.{i}.self_attn.qkv_proj.bias": "blk.{i}.attn_qkv.bias",
+    "model.layers.{i}.self_attn.o_proj.weight": "blk.{i}.attn_output.weight",
+    "model.layers.{i}.mlp.gate_proj.weight": "blk.{i}.ffn_gate.weight",
+    "model.layers.{i}.mlp.up_proj.weight": "blk.{i}.ffn_up.weight",
+    "model.layers.{i}.mlp.down_proj.weight": "blk.{i}.ffn_down.weight",
+    "model.layers.{i}.input_layernorm.weight": "blk.{i}.attn_norm.weight",
+    "model.layers.{i}.post_attention_layernorm.weight": "blk.{i}.ffn_norm.weight",
+}
+
+# StarCoder2 weight mapping (LayerNorm, bias in attention)
+STARCODER2_WEIGHT_MAP = {
+    "model.embed_tokens.weight": "token_embd.weight",
+    "model.norm.weight": "output_norm.weight",
+    "model.norm.bias": "output_norm.bias",
+    "lm_head.weight": "output.weight",
+    "model.layers.{i}.self_attn.q_proj.weight": "blk.{i}.attn_q.weight",
+    "model.layers.{i}.self_attn.q_proj.bias": "blk.{i}.attn_q.bias",
+    "model.layers.{i}.self_attn.k_proj.weight": "blk.{i}.attn_k.weight",
+    "model.layers.{i}.self_attn.k_proj.bias": "blk.{i}.attn_k.bias",
+    "model.layers.{i}.self_attn.v_proj.weight": "blk.{i}.attn_v.weight",
+    "model.layers.{i}.self_attn.v_proj.bias": "blk.{i}.attn_v.bias",
+    "model.layers.{i}.self_attn.o_proj.weight": "blk.{i}.attn_output.weight",
+    "model.layers.{i}.self_attn.o_proj.bias": "blk.{i}.attn_output.bias",
+    "model.layers.{i}.mlp.c_fc.weight": "blk.{i}.ffn_up.weight",
+    "model.layers.{i}.mlp.c_fc.bias": "blk.{i}.ffn_up.bias",
+    "model.layers.{i}.mlp.c_proj.weight": "blk.{i}.ffn_down.weight",
+    "model.layers.{i}.mlp.c_proj.bias": "blk.{i}.ffn_down.bias",
+    "model.layers.{i}.input_layernorm.weight": "blk.{i}.attn_norm.weight",
+    "model.layers.{i}.input_layernorm.bias": "blk.{i}.attn_norm.bias",
+    "model.layers.{i}.post_attention_layernorm.weight": "blk.{i}.ffn_norm.weight",
+    "model.layers.{i}.post_attention_layernorm.bias": "blk.{i}.ffn_norm.bias",
+}
+
 # Architecture name to weight map
 WEIGHT_MAPS = {
     "llama": LLAMA_WEIGHT_MAP,
     "mistral": LLAMA_WEIGHT_MAP,
     "qwen2": QWEN2_WEIGHT_MAP,
     "phi3": PHI3_WEIGHT_MAP,
+    # New architectures - Llama-compatible base layers
+    "mixtral": MIXTRAL_WEIGHT_MAP,
+    "olmo2": LLAMA_WEIGHT_MAP,
+    "granite": LLAMA_WEIGHT_MAP,
+    "stablelm": LLAMA_WEIGHT_MAP,
+    "llama4": LLAMA_WEIGHT_MAP,
+    # Architecture-specific maps
+    "cohere": COHERE_WEIGHT_MAP,
+    "cohere2": COHERE_WEIGHT_MAP,
+    "internlm2": INTERNLM2_WEIGHT_MAP,
+    "starcoder2": STARCODER2_WEIGHT_MAP,
+    "glm4": GLM4_WEIGHT_MAP,
 }
 
 # Architecture name mapping for GGUF metadata
@@ -52,6 +148,16 @@ GGUF_ARCH_NAMES = {
     "mistral": "llama",  # Mistral uses llama architecture in GGUF
     "qwen2": "llama",    # Qwen2 is llama-compatible
     "phi3": "phi3",
+    "mixtral": "llama",
+    "olmo2": "llama",
+    "granite": "llama",
+    "stablelm": "llama",
+    "llama4": "llama",
+    "cohere": "command-r",
+    "cohere2": "command-r",
+    "internlm2": "internlm2",
+    "starcoder2": "starcoder2",
+    "glm4": "llama",
 }
 
 SUPPORTED_GGUF_ARCHITECTURES = list(WEIGHT_MAPS.keys())
