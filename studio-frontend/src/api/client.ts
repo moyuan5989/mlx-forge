@@ -29,7 +29,17 @@ export const api = {
   getRunConfig: (id: string) => request<Record<string, unknown>>(`/runs/${id}/config`),
   getRunCheckpoints: (id: string) => request<import('./types').Checkpoint[]>(`/runs/${id}/checkpoints`),
   deleteRun: (id: string) => request<{ status: string }>(`/runs/${id}`, { method: 'DELETE' }),
+  exportRun: (id: string, checkpoint?: string) =>
+    request<{ status: string; output_dir: string }>(`/runs/${id}/export`, {
+      method: 'POST',
+      body: JSON.stringify(checkpoint ? { checkpoint } : {}),
+    }),
   getAdapters: () => request<import('./types').Adapter[]>('/runs/adapters'),
+  pushToHub: (id: string, repoId: string, options?: { adapterOnly?: boolean; private?: boolean }) =>
+    request<{ status: string; url: string; repo_id: string }>(`/runs/${id}/push-to-hub`, {
+      method: 'POST',
+      body: JSON.stringify({ repo_id: repoId, adapter_only: options?.adapterOnly, private: options?.private }),
+    }),
 
   // Models
   getModels: () => request<import('./types').Model[]>('/models'),

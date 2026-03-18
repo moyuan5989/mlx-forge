@@ -173,8 +173,13 @@ def create_app(runs_dir: str = "~/.mlxforge/runs") -> FastAPI:
         @app.get("/{path:path}")
         async def spa_fallback(path: str):
             """Serve index.html for all non-API routes (SPA client-side routing)."""
+            # Security: reject path traversal and null bytes
+            if "\x00" in path or ".." in path.split("/"):
+                return HTMLResponse("Forbidden", status_code=403)
             # Try to serve the exact file first
-            file_path = frontend_dir / path
+            file_path = (frontend_dir / path).resolve()
+            if not file_path.is_relative_to(frontend_dir.resolve()):
+                return HTMLResponse("Forbidden", status_code=403)
             if path and file_path.exists() and file_path.is_file():
                 return FileResponse(str(file_path))
             # Fall back to index.html for client-side routing

@@ -208,6 +208,7 @@ export interface QueueJob {
   started_at: number | null
   completed_at: number | null
   run_id: string | null
+  track_id: string | null
   error: string | null
   position: number
 }

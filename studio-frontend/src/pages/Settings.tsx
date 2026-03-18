@@ -57,7 +57,7 @@ export default function Settings() {
         <div className="rounded-lg border border-subtle bg-surface-card shadow-[var(--shadow-card)] p-4">
           <label className="block text-sm font-medium text-label mb-2">About</label>
           <div className="text-sm text-caption space-y-1">
-            <p>MLX Forge Studio v0.2.11</p>
+            <p>MLX Forge Studio v0.3.0</p>
             <p>Fine-tune LLMs on your Mac with MLX</p>
           </div>
         </div>

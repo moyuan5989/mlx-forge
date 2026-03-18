@@ -1,17 +1,19 @@
-"""Job Queue Service — FIFO training job queue.
+"""Job Queue Service — FIFO training job queue with disk persistence.
 
 Single-job concurrency by default (unified memory means two
-training jobs will OOM). In-memory, no persistence.
+training jobs will OOM). Queue state persists to ~/.mlxforge/queue.json.
 """
 
 from __future__ import annotations
 
 import asyncio
+import json
 import time
 import uuid
 from collections import deque
 from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
 from typing import Optional
 
 
@@ -32,6 +34,7 @@ class Job:
     started_at: Optional[float] = None
     completed_at: Optional[float] = None
     run_id: Optional[str] = None
+    track_id: Optional[str] = None
     error: Optional[str] = None
     position: int = 0
 
@@ -44,25 +47,50 @@ class Job:
             "started_at": self.started_at,
             "completed_at": self.completed_at,
             "run_id": self.run_id,
+            "track_id": self.track_id,
             "error": self.error,
             "position": self.position,
         }
 
+    @classmethod
+    def from_dict(cls, d: dict) -> Job:
+        return cls(
+            id=d["id"],
+            config=d.get("config", {}),
+            status=JobStatus(d.get("status", "queued")),
+            created_at=d.get("created_at", 0.0),
+            started_at=d.get("started_at"),
+            completed_at=d.get("completed_at"),
+            run_id=d.get("run_id"),
+            track_id=d.get("track_id"),
+            error=d.get("error"),
+            position=d.get("position", 0),
+        )
+
 
 class QueueService:
-    """FIFO job queue with single-job concurrency.
+    """FIFO job queue with single-job concurrency and disk persistence.
 
     Args:
         max_concurrent: Maximum concurrent training jobs.
                        Default 1 (safe for unified memory).
+        queue_path: Path to queue state file. None disables persistence.
     """
 
-    def __init__(self, max_concurrent: int = 1):
+    def __init__(
+        self,
+        max_concurrent: int = 1,
+        queue_path: str | Path | None = "~/.mlxforge/queue.json",
+    ):
         self.max_concurrent = max_concurrent
         self._queue: deque[Job] = deque()
         self._running: dict[str, Job] = {}
         self._completed: list[Job] = []
         self._lock = asyncio.Lock()
+        self._queue_path: Path | None = (
+            Path(queue_path).expanduser() if queue_path else None
+        )
+        self._load_from_disk()
 
     async def submit(self, config: dict) -> dict:
         """Submit a training job to the queue."""
@@ -73,6 +101,7 @@ class QueueService:
             position=len(self._queue),
         )
         self._queue.append(job)
+        self._save_to_disk()
 
         # Try to start if there's capacity
         await self._try_start_next()
@@ -89,6 +118,7 @@ class QueueService:
                 self._queue.remove(job)
                 self._completed.append(job)
                 self._update_positions()
+                self._save_to_disk()
                 return job.to_dict()
 
         # Check running
@@ -98,6 +128,7 @@ class QueueService:
             job.completed_at = time.time()
             del self._running[job_id]
             self._completed.append(job)
+            self._save_to_disk()
             await self._try_start_next()
             return job.to_dict()
 
@@ -112,6 +143,7 @@ class QueueService:
                 self._queue.remove(job)
                 self._queue.appendleft(job)
                 self._update_positions()
+                self._save_to_disk()
                 return job.to_dict()
         return None
 
@@ -150,6 +182,7 @@ class QueueService:
         job.started_at = time.time()
         self._running[job.id] = job
         self._update_positions()
+        self._save_to_disk()
 
         # Start training in background
         asyncio.create_task(self._run_job(job))
@@ -160,7 +193,9 @@ class QueueService:
             from mlx_forge.studio.services.training_service import TrainingService
             service = TrainingService()
             result = await service.start_training(job.config)
+            job.track_id = result.get("track_id")
             job.run_id = result.get("track_id")  # temporary until we get real run_id
+            self._save_to_disk()
 
             # Wait for the training subprocess to actually finish
             proc = result.get("_process")
@@ -185,9 +220,56 @@ class QueueService:
             if job.id in self._running:
                 del self._running[job.id]
             self._completed.append(job)
+            self._save_to_disk()
             await self._try_start_next()
 
     def _update_positions(self):
         """Update position numbers for queued jobs."""
         for i, job in enumerate(self._queue):
             job.position = i
+
+    def _save_to_disk(self):
+        """Persist queue state to disk."""
+        if self._queue_path is None:
+            return
+        try:
+            self._queue_path.parent.mkdir(parents=True, exist_ok=True)
+            state = {
+                "queue": [j.to_dict() for j in self._queue],
+                "running": [j.to_dict() for j in self._running.values()],
+                "completed": [j.to_dict() for j in self._completed[-20:]],
+            }
+            tmp_path = self._queue_path.with_suffix(".tmp")
+            with open(tmp_path, "w") as f:
+                json.dump(state, f)
+            tmp_path.replace(self._queue_path)
+        except Exception:
+            pass  # Best-effort persistence
+
+    def _load_from_disk(self):
+        """Load queue state from disk on init. Mark stale running jobs as failed."""
+        if self._queue_path is None or not self._queue_path.exists():
+            return
+        try:
+            with open(self._queue_path) as f:
+                state = json.load(f)
+        except (json.JSONDecodeError, OSError):
+            return
+
+        # Restore queued jobs
+        for d in state.get("queue", []):
+            self._queue.append(Job.from_dict(d))
+
+        # Previously-running jobs are stale (process no longer exists)
+        for d in state.get("running", []):
+            job = Job.from_dict(d)
+            job.status = JobStatus.FAILED
+            job.error = "Server restarted while job was running"
+            job.completed_at = time.time()
+            self._completed.append(job)
+
+        # Restore completed history
+        for d in state.get("completed", []):
+            self._completed.append(Job.from_dict(d))
+
+        self._update_positions()

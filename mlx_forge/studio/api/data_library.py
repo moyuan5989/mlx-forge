@@ -5,6 +5,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from mlx_forge.studio.security import validate_safe_name
 from mlx_forge.studio.services.data_library_service import DataLibraryService
 
 router = APIRouter(prefix="/api/v2/data", tags=["data-library"])
@@ -52,6 +53,10 @@ def download_dataset(req: DownloadRequest):
 @router.get("/datasets/{name}")
 def get_dataset(name: str):
     """Get metadata and stats for a specific dataset."""
+    try:
+        validate_safe_name(name, "dataset name")
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"Invalid dataset name: {name!r}")
     ds = get_service().get_dataset(name)
     if ds is None:
         raise HTTPException(status_code=404, detail=f"Dataset '{name}' not found")
@@ -61,6 +66,10 @@ def get_dataset(name: str):
 @router.get("/datasets/{name}/samples")
 def get_dataset_samples(name: str, n: int = 5):
     """Preview samples from a dataset."""
+    try:
+        validate_safe_name(name, "dataset name")
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"Invalid dataset name: {name!r}")
     samples = get_service().get_samples(name, n=n)
     if not samples:
         raise HTTPException(status_code=404, detail=f"Dataset '{name}' not found or empty")
@@ -70,6 +79,10 @@ def get_dataset_samples(name: str, n: int = 5):
 @router.delete("/datasets/{name}")
 def delete_dataset(name: str):
     """Delete a downloaded dataset."""
+    try:
+        validate_safe_name(name, "dataset name")
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"Invalid dataset name: {name!r}")
     deleted = get_service().delete(name)
     if not deleted:
         raise HTTPException(status_code=404, detail=f"Dataset '{name}' not found")

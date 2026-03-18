@@ -6,8 +6,8 @@ Thanks for your interest in contributing to MLX Forge! This guide covers the dev
 
 ```bash
 # Clone the repo
-git clone https://github.com/moyuan5989/MLX Forge.git
-cd MLX Forge
+git clone https://github.com/moyuan5989/mlx-forge.git
+cd mlx-forge
 
 # Create a virtual environment
 python3 -m venv .venv
@@ -151,4 +151,4 @@ mlx_forge/
 
 ## Questions?
 
-Open an [issue](https://github.com/moyuan5989/MLX Forge/issues) for bugs, feature requests, or questions.
+Open an [issue](https://github.com/moyuan5989/mlx-forge/issues) for bugs, feature requests, or questions.

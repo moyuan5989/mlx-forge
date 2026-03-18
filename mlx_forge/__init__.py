@@ -161,7 +161,10 @@ def train(config, resume: str | None = None):  # -> TrainState
 
     print("MLX Forge v0 — Training")
     print(f"Model: {config.model.path}")
-    print(f"Adapter: {config.adapter.method} (rank={config.adapter.rank})")
+    if config.adapter.method == "full":
+        print("Adapter: full (all parameters)")
+    else:
+        print(f"Adapter: {config.adapter.method} (rank={config.adapter.rank})")
     print()
 
     # Resolve model (HF repo ID -> local path)
@@ -207,27 +210,39 @@ def train(config, resume: str | None = None):  # -> TrainState
     print(f"Model loaded: {type(model).__name__}")
     print()
 
-    # Quantize model if configured (QLoRA: quantize THEN apply LoRA)
-    if config.model.quantization:
-        from mlx_forge.models.quantize import quantize_model
-        quantize_model(model, config.model.quantization)
-        print(f"Quantized to {config.model.quantization.bits}-bit "
-              f"(group_size={config.model.quantization.group_size})")
+    # Full fine-tuning: validate and skip LoRA
+    if config.adapter.method == "full":
+        if config.model.quantization:
+            raise ValueError(
+                "Full fine-tuning is incompatible with quantization. "
+                "Remove 'quantization' from config or use method: 'lora'/'dora'."
+            )
+        print("Full fine-tuning mode — all parameters trainable")
+        print("WARNING: Full FT uses 2-3x more memory than LoRA. "
+              "Consider enabling gradient_checkpointing: true")
         print()
+    else:
+        # Quantize model if configured (QLoRA: quantize THEN apply LoRA)
+        if config.model.quantization:
+            from mlx_forge.models.quantize import quantize_model
+            quantize_model(model, config.model.quantization)
+            print(f"Quantized to {config.model.quantization.bits}-bit "
+                  f"(group_size={config.model.quantization.group_size})")
+            print()
 
-    # Freeze base model before applying LoRA — only LoRA params should be trainable.
-    # For QLoRA, quantize_model() already calls model.freeze(). For fp16 LoRA, we
-    # need to freeze explicitly. apply_lora() then creates new unfrozen LoRA params.
-    if not config.model.quantization:
-        model.freeze()
+        # Freeze base model before applying LoRA — only LoRA params should be trainable.
+        # For QLoRA, quantize_model() already calls model.freeze(). For fp16 LoRA, we
+        # need to freeze explicitly. apply_lora() then creates new unfrozen LoRA params.
+        if not config.model.quantization:
+            model.freeze()
 
-    # Apply LoRA adapters
-    print("Applying LoRA adapters...")
-    patterns = get_patterns(config.adapter)
-    targets = resolve_targets(model, patterns, config.adapter.num_layers)
-    print(f"Matched {len(targets)} modules")
+        # Apply LoRA/DoRA adapters
+        print(f"Applying {config.adapter.method.upper()} adapters...")
+        patterns = get_patterns(config.adapter)
+        targets = resolve_targets(model, patterns, config.adapter.num_layers)
+        print(f"Matched {len(targets)} modules")
 
-    apply_lora(model, targets, config.adapter)
+        apply_lora(model, targets, config.adapter)
 
     # Count parameters
     from mlx.utils import tree_flatten
@@ -267,6 +282,41 @@ def train(config, resume: str | None = None):  # -> TrainState
             )
             ds = backend.load_tokenized(dataset_name, config.model.path)
             return dataset_name, ds
+
+    # Handle HuggingFace dataset if configured
+    if config.data.hf_dataset:
+        from mlx_forge.data.hf_loader import load_hf_dataset, save_as_jsonl
+
+        print(f"Loading HuggingFace dataset: {config.data.hf_dataset}")
+        samples = load_hf_dataset(
+            config.data.hf_dataset,
+            split=config.data.hf_split,
+            subset=config.data.hf_subset,
+            columns=config.data.hf_columns,
+            max_samples=config.data.hf_max_samples,
+        )
+        print(f"Loaded {len(samples)} samples")
+
+        # Save as JSONL
+        raw_dir = Path("~/.mlxforge/datasets/raw").expanduser()
+        dataset_name = config.data.hf_dataset.replace("/", "_")
+        train_path = raw_dir / f"{dataset_name}_train.jsonl"
+        save_as_jsonl(samples, train_path)
+
+        # Auto-split if no validation set specified
+        if config.data.valid is None:
+            split_idx = int(len(samples) * 0.9)
+            train_samples = samples[:split_idx]
+            val_samples = samples[split_idx:]
+            save_as_jsonl(train_samples, train_path)
+            val_path = raw_dir / f"{dataset_name}_val.jsonl"
+            save_as_jsonl(val_samples, val_path)
+            config.data.train = str(train_path)
+            config.data.valid = str(val_path)
+        else:
+            config.data.train = str(train_path)
+
+        print(f"Saved to {train_path}")
 
     # Multi-source mixing or single dataset
     if config.data.sources:
@@ -326,8 +376,19 @@ def train(config, resume: str | None = None):  # -> TrainState
         except ImportError:
             print("Warning: wandb not installed, skipping WandB logging")
 
-    # Create trainer (SFT or DPO based on training_type)
-    if config.training.training_type == "dpo":
+    # Create trainer (SFT, DPO, or GRPO based on training_type)
+    if config.training.training_type == "grpo":
+        from mlx_forge.trainer.grpo_trainer import GRPOTrainer
+        trainer = GRPOTrainer(
+            model=model,
+            tokenizer=tokenizer,
+            config=config,
+            train_dataset=train_dataset,
+            val_dataset=val_dataset,
+            callbacks=callbacks,
+            checkpoint_manager=manager,
+        )
+    elif config.training.training_type == "dpo":
         from mlx_forge.trainer.dpo_trainer import DPOTrainer
         trainer = DPOTrainer(
             model=model,
@@ -376,7 +437,15 @@ def _validate_resume(resume_path: Path, config) -> None:
     if not resume_path.exists():
         raise FileNotFoundError(f"Checkpoint directory not found: {resume_path}")
 
-    required = ["adapters.safetensors", "optimizer.safetensors", "state.json"]
+    # Full FT checkpoints use model.safetensors; LoRA uses adapters.safetensors
+    has_model = (resume_path / "model.safetensors").exists()
+    has_adapter = (resume_path / "adapters.safetensors").exists()
+    if not has_model and not has_adapter:
+        raise FileNotFoundError(
+            f"Checkpoint missing model weights in {resume_path}. "
+            f"Expected adapters.safetensors or model.safetensors."
+        )
+    required = ["optimizer.safetensors", "state.json"]
     missing = [f for f in required if not (resume_path / f).exists()]
     if missing:
         raise FileNotFoundError(

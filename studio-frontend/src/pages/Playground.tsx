@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { RotateCcw } from 'lucide-react'
+import { RotateCcw, X } from 'lucide-react'
 import { useModels, useAdapters } from '../hooks/useModels'
 import { useWebSocket } from '../hooks/useWebSocket'
 import ChatMessage from '../components/playground/ChatMessage'
@@ -20,6 +20,7 @@ export default function Playground() {
   const [messages, setMessages] = useState<Message[]>([])
   const [generating, setGenerating] = useState(false)
   const [stats, setStats] = useState<{ numTokens: number; tokPerSec: number } | null>(null)
+  const [error, setError] = useState<string | null>(null)
   const [config, setConfig] = useState({
     model: '',
     adapter: '',
@@ -60,10 +61,7 @@ export default function Playground() {
     } else if (msg.type === 'error') {
       generatingRef.current = false
       setGenerating(false)
-      setMessages((prev) => [
-        ...prev,
-        { role: 'assistant', content: `Error: ${msg.detail}` },
-      ])
+      setError(msg.detail)
     }
   }, [])
 
@@ -81,6 +79,7 @@ export default function Playground() {
     setMessages(newMessages)
     setGenerating(true)
     setStats(null)
+    setError(null)
     generatingRef.current = true
     startTimeRef.current = performance.now()
     tokenCountRef.current = 0
@@ -110,6 +109,15 @@ export default function Playground() {
       <div className="flex gap-4 h-[calc(100vh-10rem)]">
         {/* Chat area */}
         <div className="flex-1 flex flex-col rounded-lg border border-subtle bg-surface-overlay overflow-hidden">
+          {/* Error banner */}
+          {error && (
+            <div className="flex items-center justify-between bg-red-500/10 border-b border-red-500/20 px-4 py-2">
+              <span className="text-sm text-red-400">{error}</span>
+              <button onClick={() => setError(null)} className="text-red-400 hover:text-red-300">
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          )}
           {/* Messages */}
           <div className="flex-1 overflow-y-auto p-4 space-y-1">
             {messages.length === 0 && (

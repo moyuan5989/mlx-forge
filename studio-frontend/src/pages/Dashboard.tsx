@@ -1,5 +1,6 @@
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { FlaskConical, Activity, Box, Database, ArrowRight } from 'lucide-react'
+import { FlaskConical, Activity, Box, Database, ArrowRight, Square } from 'lucide-react'
 import { useRuns } from '../hooks/useRuns'
 import { useModels } from '../hooks/useModels'
 import { useDatasets } from '../hooks/useDatasets'
@@ -7,12 +8,14 @@ import { useActiveTraining } from '../hooks/useTraining'
 import StatCard from '../components/shared/StatCard'
 import StatusBadge from '../components/shared/StatusBadge'
 import { formatLoss, truncate } from '../lib/utils'
+import { api } from '../api/client'
 
 export default function Dashboard() {
-  const { data: runs } = useRuns()
+  const { data: runs, refetch: refetchRuns } = useRuns()
   const { data: models } = useModels()
   const { data: datasets } = useDatasets()
   const { data: active } = useActiveTraining()
+  const [stoppingId, setStoppingId] = useState<string | null>(null)
 
   const totalRuns = runs?.length ?? 0
   const activeCount = active?.length ?? 0
@@ -21,6 +24,25 @@ export default function Dashboard() {
 
   const runningRuns = runs?.filter((r) => r.status === 'running') ?? []
   const recentRuns = runs?.slice(0, 5) ?? []
+
+  async function handleStop(runId: string, e: React.MouseEvent) {
+    e.preventDefault()
+    e.stopPropagation()
+    if (!confirm('Stop this training job?')) return
+    setStoppingId(runId)
+    try {
+      const activeList = await api.getActiveTraining()
+      const match = activeList.find((a) => a.run_id === runId || a.track_id?.includes(runId))
+      if (match) {
+        await api.stopTraining(match.track_id)
+      }
+      refetchRuns()
+    } catch {
+      // best effort
+    } finally {
+      setStoppingId(null)
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -73,9 +95,20 @@ export default function Dashboard() {
                     <span className="text-sm font-medium text-label">
                       {truncate(run.id, 32)}
                     </span>
-                    <span className="text-xs text-caption">
-                      {run.current_step}/{run.num_iters}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={(e) => handleStop(run.id, e)}
+                        disabled={stoppingId === run.id}
+                        className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-medium text-red-400 hover:bg-red-500/10 disabled:opacity-50 transition-colors"
+                        title="Stop training"
+                      >
+                        <Square className="h-3 w-3" />
+                        {stoppingId === run.id ? 'Stopping...' : 'Stop'}
+                      </button>
+                      <span className="text-xs text-caption">
+                        {run.current_step}/{run.num_iters}
+                      </span>
+                    </div>
                   </div>
                   <div className="w-full bg-progress-track rounded-full h-1.5">
                     <div

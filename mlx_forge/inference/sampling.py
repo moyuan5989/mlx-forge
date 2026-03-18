@@ -34,9 +34,13 @@ def sample_next_token(
     """
     # Apply repetition penalty
     if repetition_penalty != 1.0 and generated_tokens:
+        # Clamp token IDs to valid vocab range
+        vocab_size = logits.shape[-1]
+        clamped_tokens = [max(0, min(t, vocab_size - 1)) for t in generated_tokens]
+
         # Build boolean mask on CPU (MLX lacks scatter)
         mask_np = np.zeros(logits.shape[-1], dtype=np.float32)
-        mask_np[generated_tokens] = 1.0
+        mask_np[clamped_tokens] = 1.0
         penalty_mask = mx.array(mask_np) > 0
 
         # Compute penalized logits for ALL positions, then select via mask
@@ -50,6 +54,9 @@ def sample_next_token(
     # Greedy decoding
     if temperature == 0.0:
         return mx.argmax(logits, axis=-1)
+
+    # Temperature floor to prevent division by zero
+    temperature = max(temperature, 1e-6)
 
     # Apply temperature
     logits = logits / temperature
@@ -82,6 +89,12 @@ def _apply_top_p(logits: mx.array, top_p: float) -> mx.array:
     # Set filtered logits to -inf in sorted order
     sorted_logits = logits[sorted_indices]
     sorted_logits = mx.where(cutoff_mask, mx.array(float("-inf")), sorted_logits)
+
+    # Fallback: if all tokens are -inf (top_p too small), keep the top-1 token
+    all_neg_inf = mx.all(sorted_logits == float("-inf"))
+    if all_neg_inf.item():
+        sorted_logits = mx.full_like(sorted_logits, float("-inf"))
+        sorted_logits = sorted_logits.at[0].add(float("inf"))  # top-1 in sorted order
 
     # Scatter back to original order using inverse permutation (gather, not scatter)
     inverse_indices = mx.argsort(sorted_indices)

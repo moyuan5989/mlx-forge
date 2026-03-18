@@ -192,6 +192,31 @@ class RunService:
 
         return adapters
 
+    def export_run(self, run_id: str, checkpoint: str | None = None) -> Path | None:
+        """Export a fused model for a run.
+
+        Returns the output directory path, or None if run not found.
+        """
+        run_dir = self.runs_dir / run_id
+        if not run_dir.exists():
+            return None
+
+        exports_dir = self.runs_dir.parent / "exports" / run_id
+        # Delegate to the export logic
+        import subprocess
+        import sys
+
+        cmd = [sys.executable, "-m", "mlx_forge.cli.main", "export", "--run-id", run_id]
+        cmd += ["--output-dir", str(exports_dir)]
+        if checkpoint:
+            cmd += ["--checkpoint", checkpoint]
+
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            raise RuntimeError(f"Export failed: {result.stderr}")
+
+        return exports_dir
+
     def delete_run(self, run_id: str) -> bool:
         """Delete a run directory. Returns True if deleted."""
         run_dir = self.runs_dir / run_id

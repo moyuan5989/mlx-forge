@@ -2,9 +2,15 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from fastapi import APIRouter, HTTPException
 
+from mlx_forge.studio.security import validate_safe_path
+
 router = APIRouter(prefix="/api/v1/inference", tags=["inference"])
+
+_FORGE_ROOT = Path("~/.mlxforge").expanduser()
 
 # Track currently loaded model
 _loaded_model_info: dict | None = None
@@ -26,6 +32,14 @@ def generate_text(request: dict):
     model_path = request.get("model")
     if not model_path:
         raise HTTPException(status_code=400, detail="'model' field is required")
+
+    # Validate adapter path stays within ~/.mlxforge/
+    adapter_path = request.get("adapter")
+    if adapter_path:
+        try:
+            validate_safe_path(Path(adapter_path), _FORGE_ROOT)
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Invalid adapter path: {adapter_path!r}")
 
     prompt = request.get("prompt")
     messages = request.get("messages")

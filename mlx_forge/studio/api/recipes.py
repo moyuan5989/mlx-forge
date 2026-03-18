@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException
 
+from mlx_forge.studio.security import validate_safe_name
+
 router = APIRouter(prefix="/api/v2/recipes", tags=["recipes"])
 
 
@@ -17,6 +19,10 @@ def list_recipes():
 @router.get("/{recipe_id}")
 def get_recipe(recipe_id: str):
     """Get a specific recipe by ID."""
+    try:
+        validate_safe_name(recipe_id, "recipe_id")
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"Invalid recipe_id: {recipe_id!r}")
     from mlx_forge.recipes.registry import get_recipe as _get_recipe
     recipe = _get_recipe(recipe_id)
     if recipe is None:
@@ -35,6 +41,10 @@ def resolve_recipe(recipe_id: str, body: dict):
     - dataset_samples: (optional) Number of samples
     - overrides: (optional) Config overrides
     """
+    try:
+        validate_safe_name(recipe_id, "recipe_id")
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"Invalid recipe_id: {recipe_id!r}")
     from mlx_forge.recipes.auto_config import resolve_config
     from mlx_forge.recipes.registry import get_recipe as _get_recipe
 

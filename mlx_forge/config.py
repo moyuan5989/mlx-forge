@@ -53,7 +53,7 @@ class ModelConfig(BaseModel):
 class AdapterConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    method: Literal["lora"] = "lora"
+    method: Literal["lora", "dora", "full"] = "lora"
     targets: Optional[list[str]] = None
     preset: Optional[str] = None
     num_layers: Optional[int] = None
@@ -63,6 +63,8 @@ class AdapterConfig(BaseModel):
 
     @model_validator(mode="after")
     def validate_targeting(self) -> AdapterConfig:
+        if self.method == "full":
+            return self  # Full FT doesn't need targets or presets
         if self.targets is not None and self.preset is not None:
             raise ValueError("Specify 'targets' or 'preset', not both.")
         if self.targets is None and self.preset is None:
@@ -97,7 +99,7 @@ class DataConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     train: Optional[str] = None
-    valid: str
+    valid: Optional[str] = None
     test: Optional[str] = None
     dataset: Optional[str] = None          # Named dataset from catalog
     sources: Optional[list[DataSourceConfig]] = None  # Multi-dataset mixing
@@ -105,12 +107,26 @@ class DataConfig(BaseModel):
     mask_prompt: bool = True
     packing: bool = False
 
+    # HuggingFace Datasets integration
+    hf_dataset: Optional[str] = None       # HF dataset ID
+    hf_split: str = "train"
+    hf_subset: Optional[str] = None
+    hf_columns: Optional[dict[str, str]] = None
+    hf_max_samples: Optional[int] = None
+
     @model_validator(mode="after")
     def validate_data_source(self) -> DataConfig:
-        if self.train is None and self.sources is None:
-            raise ValueError("Must specify either 'train' or 'sources'.")
-        if self.train is not None and self.sources is not None:
-            raise ValueError("Specify 'train' or 'sources', not both.")
+        sources_count = sum([
+            self.train is not None,
+            self.sources is not None,
+            self.hf_dataset is not None,
+        ])
+        if sources_count == 0:
+            raise ValueError("Must specify one of 'train', 'sources', or 'hf_dataset'.")
+        if sources_count > 1:
+            raise ValueError("Specify only one of 'train', 'sources', or 'hf_dataset'.")
+        if self.hf_dataset is None and self.valid is None:
+            raise ValueError("Must specify 'valid' when using 'train' or 'sources'.")
         return self
 
 
@@ -135,9 +151,16 @@ class TrainingParams(BaseModel):
     keep_last_n_checkpoints: int = 3
 
     # V2: Training type and DPO parameters
-    training_type: Literal["sft", "dpo"] = "sft"
+    training_type: Literal["sft", "dpo", "grpo"] = "sft"
     dpo_beta: float = 0.1
     dpo_reference_free: bool = True
+
+    # GRPO parameters
+    grpo_num_generations: int = 4
+    grpo_beta: float = 0.1
+    grpo_clip_range: float = 0.2
+    grpo_max_completion_length: int = 256
+    grpo_reward_function: str = "length"
 
     @model_validator(mode="after")
     def validate_save_accum(self) -> TrainingParams:

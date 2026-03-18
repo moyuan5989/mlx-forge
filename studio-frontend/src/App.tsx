@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ThemeContext, useThemeProvider } from './hooks/useTheme'
 import PageLayout from './components/layout/PageLayout'
+import ErrorBoundary from './components/shared/ErrorBoundary'
 import Dashboard from './pages/Dashboard'
 import Experiments from './pages/Experiments'
 import RunDetail from './pages/RunDetail'
@@ -25,17 +26,19 @@ export default function App() {
       <QueryClientProvider client={queryClient}>
         <BrowserRouter>
           <PageLayout>
-            <Routes>
-              <Route path="/" element={<Dashboard />} />
-              <Route path="/new" element={<NewTraining />} />
-              <Route path="/queue" element={<Navigate to="/experiments" replace />} />
-              <Route path="/experiments" element={<Experiments />} />
-              <Route path="/experiments/:id" element={<RunDetail />} />
-              <Route path="/models" element={<Models />} />
-              <Route path="/datasets" element={<Datasets />} />
-              <Route path="/playground" element={<Playground />} />
-              <Route path="/settings" element={<Settings />} />
-            </Routes>
+            <ErrorBoundary>
+              <Routes>
+                <Route path="/" element={<Dashboard />} />
+                <Route path="/new" element={<NewTraining />} />
+                <Route path="/queue" element={<Navigate to="/experiments" replace />} />
+                <Route path="/experiments" element={<Experiments />} />
+                <Route path="/experiments/:id" element={<RunDetail />} />
+                <Route path="/models" element={<Models />} />
+                <Route path="/datasets" element={<Datasets />} />
+                <Route path="/playground" element={<Playground />} />
+                <Route path="/settings" element={<Settings />} />
+              </Routes>
+            </ErrorBoundary>
           </PageLayout>
         </BrowserRouter>
       </QueryClientProvider>

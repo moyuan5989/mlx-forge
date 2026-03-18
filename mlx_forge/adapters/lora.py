@@ -233,18 +233,31 @@ def apply_lora(model, targets: list[tuple[str, object]], config) -> object:
     """
     lora_layers = []
 
+    # Import DoRA if needed
+    use_dora = getattr(config, "method", "lora") == "dora"
+    if use_dora:
+        from mlx_forge.adapters.dora import DoRALinear
+
     for name, module in targets:
         # Determine module type and create appropriate LoRA wrapper
         if isinstance(module, (nn.Linear, nn.QuantizedLinear)) or (
             hasattr(module, "weight") and len(getattr(module, "weight").shape) == 2
         ):
-            # Linear-like module
-            lora_module = LoRALinear.from_base(
-                module,
-                r=config.rank,
-                scale=config.scale,
-                dropout=config.dropout,
-            )
+            # Linear-like module — use DoRA or LoRA based on config
+            if use_dora:
+                lora_module = DoRALinear.from_base(
+                    module,
+                    r=config.rank,
+                    scale=config.scale,
+                    dropout=config.dropout,
+                )
+            else:
+                lora_module = LoRALinear.from_base(
+                    module,
+                    r=config.rank,
+                    scale=config.scale,
+                    dropout=config.dropout,
+                )
             lora_layers.append((name, lora_module))
 
         elif isinstance(module, (nn.Embedding, nn.QuantizedEmbedding)) or (

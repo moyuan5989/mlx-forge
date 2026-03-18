@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mlx-forge"
-version = "0.2.11"
+version = "0.5.0"
 description = "Fine-tune, experiment with, and run LLMs locally on your Mac"
 license = "MIT"
 readme = "README.md"
@@ -29,7 +29,7 @@ dependencies = [
     "pydantic>=2.0",
     "pyyaml>=6.0",
     "numpy>=1.24.0",
-    "transformers>=4.35.0",
+    "transformers>=4.35.0,<5.0",
     "jinja2>=3.0",
     "safetensors>=0.4.0",
     "huggingface-hub>=0.20.0",
@@ -37,6 +37,7 @@ dependencies = [
     "fastapi>=0.104.0",
     "uvicorn[standard]>=0.24.0",
     "websockets>=12.0",
+    "sse-starlette>=1.6.0",
 ]
 
 [project.optional-dependencies]
@@ -51,8 +52,12 @@ dev = [
     "httpx>=0.25.0",
     "ruff>=0.4.0",
 ]
+docs = [
+    "mkdocs>=1.5",
+    "mkdocs-material>=9.0",
+]
 all = [
-    "mlx-forge[wandb]",
+    "mlx-forge[wandb,docs]",
 ]
 
 [project.urls]

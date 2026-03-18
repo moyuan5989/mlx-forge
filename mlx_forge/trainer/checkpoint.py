@@ -31,11 +31,24 @@ class CheckpointManager:
         self._best_val_loss = float("inf")
         self.last_checkpoint_dir = None
 
-    def save(self, state: TrainState, model, optimizer) -> Path:
+    def save(self, state: TrainState, model, optimizer, adapter_method=None) -> Path:
         """Save a checkpoint atomically (tmp dir -> rename).
+
+        Args:
+            state: Current training state.
+            model: The model to save weights from.
+            optimizer: The optimizer to save state from.
+            adapter_method: If "full", saves all model weights as model.safetensors.
+                Otherwise saves trainable params as adapters.safetensors.
 
         Returns the checkpoint directory path.
         """
+        # Auto-detect adapter_method from config if not provided
+        if adapter_method is None:
+            adapter_method = getattr(
+                getattr(self.config, "adapter", None), "method", "lora"
+            )
+
         # Create checkpoint directory name
         ckpt_name = f"step-{state.step:07d}"
         ckpt_dir = self.checkpoint_dir / ckpt_name
@@ -45,9 +58,15 @@ class CheckpointManager:
         tmp_dir.mkdir(parents=True, exist_ok=True)
 
         try:
-            # 1. Save adapter weights (trainable parameters only)
-            adapter_weights = dict(tree_flatten(model.trainable_parameters()))
-            mx.save_safetensors(str(tmp_dir / "adapters.safetensors"), adapter_weights)
+            # 1. Save model weights
+            if adapter_method == "full":
+                # Full FT: save ALL model parameters
+                all_weights = dict(tree_flatten(model.parameters()))
+                mx.save_safetensors(str(tmp_dir / "model.safetensors"), all_weights)
+            else:
+                # LoRA/DoRA: save trainable parameters only
+                adapter_weights = dict(tree_flatten(model.trainable_parameters()))
+                mx.save_safetensors(str(tmp_dir / "adapters.safetensors"), adapter_weights)
 
             # 2. Save optimizer state
             opt_state = dict(tree_flatten(optimizer.state))
@@ -62,6 +81,7 @@ class CheckpointManager:
                 "best_val_loss": state.best_val_loss,
                 "learning_rate": float(optimizer.learning_rate),
                 "rng_seed": state.rng_seed,
+                "adapter_method": adapter_method,
             }
             (tmp_dir / "state.json").write_text(json.dumps(state_dict, indent=2))
 
@@ -95,13 +115,18 @@ class CheckpointManager:
         """
         ckpt_dir = Path(ckpt_dir)
 
-        # Validate checkpoint integrity
-        required_files = ["adapters.safetensors", "optimizer.safetensors", "state.json"]
-        for filename in required_files:
+        # Validate checkpoint integrity — accept either adapters.safetensors or model.safetensors
+        has_adapters = (ckpt_dir / "adapters.safetensors").exists()
+        has_model = (ckpt_dir / "model.safetensors").exists()
+        if not has_adapters and not has_model:
+            raise FileNotFoundError(
+                f"Checkpoint missing model weights in {ckpt_dir}. "
+                f"Expected adapters.safetensors or model.safetensors."
+            )
+        for filename in ["optimizer.safetensors", "state.json"]:
             if not (ckpt_dir / filename).exists():
                 raise FileNotFoundError(
-                    f"Checkpoint missing {filename} in {ckpt_dir}. "
-                    f"Expected files: {required_files}"
+                    f"Checkpoint missing {filename} in {ckpt_dir}."
                 )
 
         # Load state metadata
@@ -115,9 +140,12 @@ class CheckpointManager:
                 f"This version of mlx_forge only supports schema version 1."
             )
 
-        # Load adapter weights
-        adapter_weights = mx.load(str(ckpt_dir / "adapters.safetensors"))
-        model.load_weights(list(adapter_weights.items()), strict=False)
+        # Load model/adapter weights
+        if has_model:
+            weights = mx.load(str(ckpt_dir / "model.safetensors"))
+        else:
+            weights = mx.load(str(ckpt_dir / "adapters.safetensors"))
+        model.load_weights(list(weights.items()), strict=False)
 
         # Load optimizer state
         opt_weights = mx.load(str(ckpt_dir / "optimizer.safetensors"))

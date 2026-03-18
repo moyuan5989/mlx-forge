@@ -191,6 +191,54 @@ def build_parser() -> argparse.ArgumentParser:
     del_parser = data_subs.add_parser("delete", help="Delete a downloaded dataset")
     del_parser.add_argument("name", help="Dataset name")
 
+    # data hf-import
+    hf_parser = data_subs.add_parser("hf-import", help="Import a HuggingFace dataset")
+    hf_parser.add_argument("dataset_id", help="HuggingFace dataset ID (e.g., 'tatsu-lab/alpaca')")
+    hf_parser.add_argument("--split", default="train", help="Dataset split (default: train)")
+    hf_parser.add_argument("--subset", default=None, help="Dataset subset/config name")
+    hf_parser.add_argument("--name", default=None, help="Local name for the dataset")
+    hf_parser.add_argument("--max-samples", type=int, default=None, help="Limit number of samples")
+
+    # --- export ---
+    export_parser = subparsers.add_parser(
+        "export",
+        help="Merge LoRA adapters into base model and save",
+    )
+    export_parser.add_argument(
+        "--run-id", required=True, help="Run ID to export (from ~/.mlxforge/runs/)"
+    )
+    export_parser.add_argument(
+        "--output-dir",
+        default=None,
+        help="Output directory (default: ~/.mlxforge/exports/{run-id})",
+    )
+    export_parser.add_argument(
+        "--checkpoint",
+        default=None,
+        help="Checkpoint name (default: best or latest)",
+    )
+    export_parser.add_argument(
+        "--format",
+        choices=["safetensors", "gguf"],
+        default="safetensors",
+        help="Export format (default: safetensors)",
+    )
+    export_parser.add_argument(
+        "--push-to-hub",
+        default=None,
+        help="Push to HuggingFace Hub (e.g., 'username/model-name')",
+    )
+    export_parser.add_argument(
+        "--adapter-only",
+        action="store_true",
+        help="Upload only adapter files (not full merged model)",
+    )
+    export_parser.add_argument(
+        "--private",
+        action="store_true",
+        help="Create private HuggingFace repository",
+    )
+
     # --- studio ---
     studio_parser = subparsers.add_parser(
         "studio",
@@ -206,6 +254,33 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=8741,
         help="Port number (default: 8741)",
+    )
+
+    # --- serve ---
+    serve_parser = subparsers.add_parser(
+        "serve",
+        help="Start an OpenAI-compatible API server for local models",
+    )
+    serve_parser.add_argument(
+        "--model",
+        default=None,
+        help="Model to pre-load (run ID, export name, HF repo, or local path)",
+    )
+    serve_parser.add_argument(
+        "--adapter",
+        default=None,
+        help="Path to adapter checkpoint directory",
+    )
+    serve_parser.add_argument(
+        "--host",
+        default="127.0.0.1",
+        help="Bind address (default: 127.0.0.1)",
+    )
+    serve_parser.add_argument(
+        "--port",
+        type=int,
+        default=8000,
+        help="Port number (default: 8000)",
     )
 
     return parser
@@ -235,10 +310,18 @@ def main(argv: list[str] | None = None) -> None:
         from mlx_forge.cli.data_cmd import run_data
 
         run_data(args)
+    elif args.command == "export":
+        from mlx_forge.cli.export_cmd import run_export
+
+        run_export(args)
     elif args.command == "studio":
         from mlx_forge.cli.studio_cmd import run_studio
 
         run_studio(args)
+    elif args.command == "serve":
+        from mlx_forge.cli.serve_cmd import run_serve
+
+        run_serve(args)
     else:
         parser.print_help()
         sys.exit(1)

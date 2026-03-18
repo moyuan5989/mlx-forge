@@ -1,0 +1,57 @@
+site_name: MLX Forge
+site_description: Fine-tune, experiment with, and run LLMs locally on your Mac
+site_url: https://moyuan5989.github.io/mlx-forge
+repo_url: https://github.com/moyuan5989/mlx-forge
+repo_name: moyuan5989/mlx-forge
+
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: deep purple
+      accent: amber
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: deep purple
+      accent: amber
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.tabs.link
+
+nav:
+  - Home: index.md
+  - Getting Started:
+    - Installation: installation.md
+    - Quick Start: quickstart.md
+  - User Guide:
+    - CLI Reference: cli-reference.md
+    - Config Reference: config-reference.md
+    - Studio UI: studio.md
+    - OpenAI API: openai-api.md
+  - Advanced:
+    - Architecture Guide: architecture.md
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - admonition
+  - pymdownx.details
+  - tables
+  - toc:
+      permalink: true
+
+plugins:
+  - search
