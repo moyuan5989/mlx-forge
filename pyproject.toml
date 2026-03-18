@@ -51,6 +51,7 @@ dev = [
     "pytest-cov>=4.1.0",
     "httpx>=0.25.0",
     "ruff>=0.4.0",
+    "tomli>=2.0; python_version < '3.11'",
 ]
 docs = [
     "mkdocs>=1.5",

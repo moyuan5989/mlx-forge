@@ -9,9 +9,16 @@ class TestVersionBump:
         assert __version__ == "0.5.0"
 
     def test_pyproject_version(self):
+        import sys
         from pathlib import Path
 
-        import tomllib
+        if sys.version_info >= (3, 11):
+            import tomllib
+        else:
+            try:
+                import tomllib
+            except ModuleNotFoundError:
+                import tomli as tomllib
 
         pyproject = Path(__file__).parent.parent / "pyproject.toml"
         with open(pyproject, "rb") as f:
@@ -40,9 +47,16 @@ class TestChangelog:
 
 class TestTransformersPinned:
     def test_upper_bound(self):
+        import sys
         from pathlib import Path
 
-        import tomllib
+        if sys.version_info >= (3, 11):
+            import tomllib
+        else:
+            try:
+                import tomllib
+            except ModuleNotFoundError:
+                import tomli as tomllib
 
         pyproject = Path(__file__).parent.parent / "pyproject.toml"
         with open(pyproject, "rb") as f:
