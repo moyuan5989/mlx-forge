@@ -109,6 +109,39 @@ class ConsoleCallback(Callback):
         print(f"Step {state.step}/{self.num_iters} | Saved checkpoint to {checkpoint_dir}")
 
 
+class HeartbeatCallback(Callback):
+    """Touches a .heartbeat file in the run directory on every step.
+
+    This allows the Studio to reliably detect that training is alive
+    even when metrics aren't written (during compilation, eval, etc.).
+    """
+
+    def __init__(self, run_dir: Path):
+        self.heartbeat_path = Path(run_dir) / ".heartbeat"
+
+    def on_train_begin(self, state: TrainState) -> None:
+        self._touch()
+
+    def on_step_end(self, state: TrainState, metrics: dict) -> None:
+        self._touch()
+
+    def on_eval_end(self, state: TrainState, metrics: dict) -> None:
+        self._touch()
+
+    def on_train_end(self, state: TrainState) -> None:
+        # Remove heartbeat on clean exit so status transitions to completed/stopped
+        try:
+            self.heartbeat_path.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+    def _touch(self):
+        try:
+            self.heartbeat_path.touch()
+        except OSError:
+            pass
+
+
 class WandBCallback(Callback):
     """Optional Weights & Biases integration (try/except import)."""
 

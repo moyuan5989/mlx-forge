@@ -218,9 +218,10 @@ class TestRunService:
         with open(logs_dir / "metrics.jsonl", "w") as f:
             f.write(json.dumps({"event": "train", "step": 50, "train_loss": 2.0}) + "\n")
 
-        # Set mtime to >60s ago
-        old_time = time.time() - 120
+        # Set mtime to >5min ago (status window is 300s)
+        old_time = time.time() - 600
         os.utime(logs_dir / "metrics.jsonl", (old_time, old_time))
+        os.utime(run_dir, (old_time, old_time))
 
         service = RunService(str(tmp_runs_dir))
         run = service.get_run(run_id)

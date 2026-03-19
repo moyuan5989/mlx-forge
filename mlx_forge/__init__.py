@@ -356,9 +356,11 @@ def train(config, resume: str | None = None):  # -> TrainState
     print()
 
     # Create callbacks
+    from mlx_forge.trainer.callbacks import HeartbeatCallback
     callbacks = [
         ConsoleCallback(num_iters=config.training.num_iters),
         MetricsLoggerCallback(log_path=run_dir / "logs" / "metrics.jsonl"),
+        HeartbeatCallback(run_dir=run_dir),
     ]
 
     # Add WandB callback if configured

@@ -61,8 +61,14 @@ class TrainingService:
 
     async def wait_for_completion(
         self, proc: asyncio.subprocess.Process,
+        on_run_id: callable | None = None,
     ) -> tuple[int, str, str | None]:
         """Wait for a training subprocess to finish.
+
+        Args:
+            proc: The subprocess to wait on.
+            on_run_id: Optional callback invoked as soon as the run_id is
+                       captured from stdout (before the process finishes).
 
         Returns:
             Tuple of (return_code, stderr_tail, run_id).
@@ -83,6 +89,12 @@ class TrainingService:
                 if text.startswith("Run directory:") and run_id[0] is None:
                     path = text.split(":", 1)[1].strip()
                     run_id[0] = Path(path).name
+                    # Notify caller immediately so UI can show the run_id
+                    if on_run_id is not None:
+                        try:
+                            on_run_id(run_id[0])
+                        except Exception:
+                            pass
 
         async def _drain_stderr(stream):
             if stream is None:
@@ -129,22 +141,39 @@ class TrainingService:
         return {"status": "stopped", "track_id": track_id, "returncode": proc.returncode}
 
     def list_active(self) -> list[dict]:
-        """Return list of active training processes."""
+        """Return list of active training processes.
+
+        Enriches results with run_id from QueueService when available.
+        """
         active = []
         finished = []
         for track_id, proc in self._processes.items():
             if proc.returncode is not None:
                 finished.append(track_id)
                 continue
-            active.append({
+            entry = {
                 "track_id": track_id,
                 "pid": proc.pid,
                 "config": self._configs.get(track_id),
-            })
+                "run_id": None,
+            }
+            active.append(entry)
 
         # Clean up finished processes
         for track_id in finished:
             self._cleanup(track_id)
+
+        # Enrich with run_id from queue service (if jobs were submitted via queue)
+        try:
+            from mlx_forge.studio.api.queue import get_queue_service
+            queue = get_queue_service()
+            for job in queue._running.values():
+                for entry in active:
+                    if entry["track_id"] == job.track_id:
+                        entry["run_id"] = job.run_id
+                        break
+        except Exception:
+            pass
 
         return active
 

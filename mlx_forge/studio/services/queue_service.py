@@ -35,6 +35,7 @@ class Job:
     completed_at: Optional[float] = None
     run_id: Optional[str] = None
     track_id: Optional[str] = None
+    pid: Optional[int] = None
     error: Optional[str] = None
     position: int = 0
 
@@ -48,6 +49,7 @@ class Job:
             "completed_at": self.completed_at,
             "run_id": self.run_id,
             "track_id": self.track_id,
+            "pid": self.pid,
             "error": self.error,
             "position": self.position,
         }
@@ -63,6 +65,7 @@ class Job:
             completed_at=d.get("completed_at"),
             run_id=d.get("run_id"),
             track_id=d.get("track_id"),
+            pid=d.get("pid"),
             error=d.get("error"),
             position=d.get("position", 0),
         )
@@ -109,8 +112,12 @@ class QueueService:
         return job.to_dict()
 
     async def cancel(self, job_id: str) -> Optional[dict]:
-        """Cancel a queued or running job."""
-        # Check queue
+        """Cancel a queued or running job.
+
+        For running jobs, sends SIGINT to the training subprocess
+        before updating the job status.
+        """
+        # Check queue (not yet started — just remove)
         for job in self._queue:
             if job.id == job_id:
                 job.status = JobStatus.CANCELLED
@@ -121,9 +128,27 @@ class QueueService:
                 self._save_to_disk()
                 return job.to_dict()
 
-        # Check running
+        # Check running — must kill the subprocess first
         if job_id in self._running:
             job = self._running[job_id]
+
+            # Kill the actual training subprocess via TrainingService
+            if job.track_id:
+                try:
+                    from mlx_forge.studio.api.training import get_training_service
+                    await get_training_service().stop_training(job.track_id)
+                except Exception:
+                    pass  # Subprocess may have already exited
+
+            # If we have a PID but no track_id, kill directly
+            if job.pid and not job.track_id:
+                try:
+                    import os
+                    import signal
+                    os.kill(job.pid, signal.SIGINT)
+                except (OSError, ProcessLookupError):
+                    pass
+
             job.status = JobStatus.CANCELLED
             job.completed_at = time.time()
             del self._running[job_id]
@@ -190,20 +215,31 @@ class QueueService:
     async def _run_job(self, job: Job):
         """Execute a training job and wait for the subprocess to finish."""
         try:
-            from mlx_forge.studio.services.training_service import TrainingService
-            service = TrainingService()
+            # Use the shared TrainingService so list_active() works consistently
+            from mlx_forge.studio.api.training import get_training_service
+            service = get_training_service()
             result = await service.start_training(job.config)
             job.track_id = result.get("track_id")
-            job.run_id = result.get("track_id")  # temporary until we get real run_id
+            job.pid = result.get("pid")
+            # run_id is not yet known — will be captured from subprocess stdout
+            job.run_id = None
             self._save_to_disk()
 
             # Wait for the training subprocess to actually finish
             proc = result.get("_process")
             if proc is not None:
-                returncode, stderr, run_id = await service.wait_for_completion(proc)
-                # Use the real experiment run_id if captured from stdout
-                if run_id:
+                def _on_run_id(rid):
+                    """Called as soon as subprocess prints the run directory."""
+                    job.run_id = rid
+                    self._save_to_disk()
+
+                returncode, stderr, run_id = await service.wait_for_completion(
+                    proc, on_run_id=_on_run_id,
+                )
+                # Fallback: use the real experiment run_id if captured from stdout
+                if run_id and job.run_id != run_id:
                     job.run_id = run_id
+                    self._save_to_disk()
                 if returncode != 0:
                     job.status = JobStatus.FAILED
                     error_lines = stderr.strip().split("\n")[-5:]

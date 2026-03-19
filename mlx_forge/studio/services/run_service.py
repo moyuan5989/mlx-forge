@@ -289,7 +289,7 @@ class RunService:
         return last_train, last_eval
 
     def _infer_status(self, run_dir: Path, summary: dict) -> str:
-        """Infer run status from filesystem state.
+        """Infer run status from filesystem state and active processes.
 
         Returns: "completed", "running", "stopped", "unknown".
         """
@@ -299,14 +299,69 @@ class RunService:
         if num_iters > 0 and current_step >= num_iters:
             return "completed"
 
-        # Check if metrics file was recently modified (within 60s)
+        # Check heartbeat file first (written by training subprocess)
+        heartbeat_path = run_dir / ".heartbeat"
+        if heartbeat_path.exists():
+            try:
+                hb_mtime = heartbeat_path.stat().st_mtime
+                if time.time() - hb_mtime < 30:
+                    return "running"
+            except OSError:
+                pass
+
+        # Check if metrics file was recently modified
+        # Use a generous window: 5 minutes covers model loading, compilation,
+        # evaluation, and slow steps on large models
         metrics_path = run_dir / "logs" / "metrics.jsonl"
         if metrics_path.exists():
             mtime = metrics_path.stat().st_mtime
-            if time.time() - mtime < 60:
+            if time.time() - mtime < 300:
                 return "running"
+
+        # Check if a training subprocess is alive for this run
+        if self._is_process_alive_for_run(run_dir.name):
+            return "running"
+
+        # Check if the run directory was recently created (still starting up)
+        try:
+            dir_mtime = run_dir.stat().st_mtime
+            if time.time() - dir_mtime < 300:
+                # Recently created, may still be loading model
+                config_path = run_dir / "config.yaml"
+                if config_path.exists() and not metrics_path.exists():
+                    return "running"
+        except OSError:
+            pass
 
         if current_step > 0:
             return "stopped"
 
         return "unknown"
+
+    def _is_process_alive_for_run(self, run_id: str) -> bool:
+        """Check if a training subprocess is still alive for this run.
+
+        Consults the shared TrainingService and QueueService to verify
+        whether a subprocess is actively running for the given run_id.
+        """
+        try:
+            # Check via the training API's shared service
+            from mlx_forge.studio.api.training import get_training_service
+            for entry in get_training_service().list_active():
+                if run_id in str(entry.get("track_id", "")):
+                    return True
+        except Exception:
+            pass
+
+        try:
+            # Check via the queue service's running jobs
+            from mlx_forge.studio.api.queue import get_queue_service
+            for job in get_queue_service()._running.values():
+                if job.run_id and run_id in str(job.run_id):
+                    return True
+                if job.track_id and run_id in str(job.track_id):
+                    return True
+        except Exception:
+            pass
+
+        return False
