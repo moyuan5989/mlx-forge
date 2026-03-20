@@ -109,7 +109,11 @@ class BaseTrainer:
         if mx.metal.is_available():
             device_info = mx.device_info()
             if "max_recommended_working_set_size" in device_info:
-                mx.set_wired_limit(device_info["max_recommended_working_set_size"])
+                # Reserve 25% of recommended limit for OS + apps to prevent
+                # system freeze. On unified memory Macs, wiring too much
+                # starves macOS of physical RAM and causes unrecoverable hangs.
+                safe_limit = int(device_info["max_recommended_working_set_size"] * 0.75)
+                mx.set_wired_limit(safe_limit)
 
         mx.random.seed(self.config.training.seed)
         self.callbacks.on_train_begin(self.state)

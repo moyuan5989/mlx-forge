@@ -35,9 +35,8 @@ class TestQueuePersistence:
         assert total >= 1
 
     def test_state_survives_reinstantiation(self, queue_file):
-        # Submit a job with persistence
+        # Stale queued jobs are discarded on restart (to prevent duplicates)
         svc1 = QueueService(queue_path=queue_file)
-        # Write a manual queued job to avoid starting subprocess
         job = Job(
             id="test-01",
             config={"model": {"path": "test"}},
@@ -47,11 +46,13 @@ class TestQueuePersistence:
         svc1._queue.append(job)
         svc1._save_to_disk()
 
-        # Re-instantiate and check
+        # Re-instantiate — queued jobs should be cancelled, not restored
         svc2 = QueueService(queue_path=queue_file)
         jobs = svc2.list_jobs()
         queued_ids = [j["id"] for j in jobs if j["status"] == "queued"]
-        assert "test-01" in queued_ids
+        cancelled_ids = [j["id"] for j in jobs if j["status"] == "cancelled"]
+        assert "test-01" not in queued_ids
+        assert "test-01" in cancelled_ids
 
     def test_running_jobs_marked_failed_on_restart(self, queue_file):
         # Simulate a running job in the persisted state
@@ -171,10 +172,10 @@ class TestQueuePersistence:
         assert svc.list_jobs() == []
 
     def test_stats_correct(self, queue_file):
+        # Stale queued jobs are discarded on restart, so test with
+        # only completed jobs (which ARE restored)
         state = {
-            "queue": [
-                {"id": "q1", "config": {}, "status": "queued", "created_at": 0},
-            ],
+            "queue": [],
             "running": [],
             "completed": [
                 {"id": "c1", "config": {}, "status": "completed", "created_at": 0},
@@ -184,6 +185,7 @@ class TestQueuePersistence:
         queue_file.write_text(json.dumps(state))
         svc = QueueService(queue_path=queue_file)
         s = svc.stats()
-        assert s["queued"] == 1
+        assert s["queued"] == 0
         assert s["completed"] == 1
+        assert s["failed"] == 1
         assert s["failed"] == 1

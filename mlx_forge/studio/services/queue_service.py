@@ -96,7 +96,24 @@ class QueueService:
         self._load_from_disk()
 
     async def submit(self, config: dict) -> dict:
-        """Submit a training job to the queue."""
+        """Submit a training job to the queue.
+
+        Rejects submission if an identical config is already running or queued
+        to prevent accidental duplicate jobs.
+        """
+        # Deduplication: check if same model+data combo is already active
+        config_model = config.get("model", {}).get("path", "")
+        config_data = config.get("data", {}).get("train", "") or config.get("data", {}).get("hf_dataset", "")
+        for existing in list(self._queue) + list(self._running.values()):
+            ex_model = existing.config.get("model", {}).get("path", "")
+            ex_data = existing.config.get("data", {}).get("train", "") or existing.config.get("data", {}).get("hf_dataset", "")
+            if ex_model == config_model and ex_data == config_data:
+                raise ValueError(
+                    f"A job with the same model and dataset is already "
+                    f"{existing.status.value} (job {existing.id}). "
+                    f"Cancel it first or wait for it to complete."
+                )
+
         job = Job(
             id=str(uuid.uuid4())[:8],
             config=config,
@@ -283,7 +300,12 @@ class QueueService:
             pass  # Best-effort persistence
 
     def _load_from_disk(self):
-        """Load queue state from disk on init. Mark stale running jobs as failed."""
+        """Load queue state from disk on init.
+
+        Stale running jobs are marked FAILED. Stale queued jobs are DISCARDED
+        (not restored) because they likely represent pre-crash state that the
+        user will resubmit manually — restoring them causes confusing duplicates.
+        """
         if self._queue_path is None or not self._queue_path.exists():
             return
         try:
@@ -292,9 +314,17 @@ class QueueService:
         except (json.JSONDecodeError, OSError):
             return
 
-        # Restore queued jobs
-        for d in state.get("queue", []):
-            self._queue.append(Job.from_dict(d))
+        # DISCARD previously-queued jobs — the user will resubmit if needed.
+        # Restoring them causes "duplicate job" confusion when the user
+        # resubmits the same config after a crash/restart.
+        stale_queued = state.get("queue", [])
+        if stale_queued:
+            for d in stale_queued:
+                job = Job.from_dict(d)
+                job.status = JobStatus.CANCELLED
+                job.error = "Discarded: server restarted"
+                job.completed_at = time.time()
+                self._completed.append(job)
 
         # Previously-running jobs are stale (process no longer exists)
         for d in state.get("running", []):
@@ -309,3 +339,6 @@ class QueueService:
             self._completed.append(Job.from_dict(d))
 
         self._update_positions()
+
+        # Clear the stale state file so next restart is clean
+        self._save_to_disk()

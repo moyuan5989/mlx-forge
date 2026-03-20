@@ -263,21 +263,20 @@ def gated_delta_chunkwise(
     T_padded = q.shape[1]
     n_chunks = T_padded // C
 
-    # Upcast to float32
-    q = q.astype(mx.float32)
-    k = k.astype(mx.float32)
-    v = v.astype(mx.float32)
+    # NOTE: Do NOT upcast the full (B, T, H, D) tensors to float32 here.
+    # That would allocate ~384 MB per DeltaNet layer × 21 layers = 8 GB.
+    # Instead, upcast per-chunk inside the loop to keep peak memory low.
 
     if state is None:
         state = mx.zeros((B, Hv, Dv, Dk), dtype=mx.float32)
     else:
         state = state.astype(mx.float32)
 
-    # Compute gates
+    # Compute gates in float32 (these are small: B × T × Hv)
     beta = mx.sigmoid(b.astype(mx.float32))  # (B, T_padded, Hv)
     g = _compute_decay(A_log, a, dt_bias)     # (B, T_padded, Hv)
 
-    # GQA: repeat Q, K to match value heads
+    # GQA: repeat Q, K to match value heads (still in original dtype)
     repeat_factor = Hv // Hk
     if repeat_factor > 1:
         q = mx.repeat(q, repeat_factor, axis=-2)
@@ -287,6 +286,7 @@ def gated_delta_chunkwise(
     causal_mask = mx.tril(mx.ones((C, C), dtype=mx.float32))
 
     # Transpose once before loop: (B, T, H, D) -> (B, H, T, D)
+    # Keep in original dtype to save memory
     q = q.transpose(0, 2, 1, 3)       # (B, Hv, T_padded, Dk)
     k = k.transpose(0, 2, 1, 3)       # (B, Hv, T_padded, Dk)
     v = v.transpose(0, 2, 1, 3)       # (B, Hv, T_padded, Dv)
@@ -298,12 +298,12 @@ def gated_delta_chunkwise(
         s = ci * C
         e = s + C
 
-        # Slice already-transposed tensors (no per-chunk transpose)
-        q_h = q[:, :, s:e, :]    # (B, Hv, C, Dk)
-        k_h = k[:, :, s:e, :]    # (B, Hv, C, Dk)
-        v_h = v[:, :, s:e, :]    # (B, Hv, C, Dv)
-        g_h = g[:, :, s:e]       # (B, Hv, C)
-        beta_h = beta[:, :, s:e] # (B, Hv, C)
+        # Slice and upcast per-chunk (keeps only C tokens in float32 at a time)
+        q_h = q[:, :, s:e, :].astype(mx.float32)    # (B, Hv, C, Dk)
+        k_h = k[:, :, s:e, :].astype(mx.float32)    # (B, Hv, C, Dk)
+        v_h = v[:, :, s:e, :].astype(mx.float32)    # (B, Hv, C, Dv)
+        g_h = g[:, :, s:e]       # (B, Hv, C) — already float32
+        beta_h = beta[:, :, s:e] # (B, Hv, C) — already float32
 
         # --- 1. Intra-chunk attention (parallel matmul) ---
         # Q @ K^T -> (B, Hv, C, C), then apply causal mask

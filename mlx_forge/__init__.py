@@ -153,11 +153,14 @@ def train(config, resume: str | None = None):  # -> TrainState
 
     import mlx.core as mx
 
-    # Set wired memory limit early, before loading model weights
+    # Set wired memory limit early, before loading model weights.
+    # Reserve 25% of recommended limit for OS + apps to prevent system freeze.
+    # On unified memory Macs, wiring too much starves macOS of physical RAM.
     if mx.metal.is_available():
         device_info = mx.device_info()
         if "max_recommended_working_set_size" in device_info:
-            mx.set_wired_limit(device_info["max_recommended_working_set_size"])
+            safe_limit = int(device_info["max_recommended_working_set_size"] * 0.75)
+            mx.set_wired_limit(safe_limit)
 
     print("MLX Forge v0 — Training")
     print(f"Model: {config.model.path}")
@@ -210,6 +213,13 @@ def train(config, resume: str | None = None):  # -> TrainState
     print(f"Model loaded: {type(model).__name__}")
     print()
 
+    # Auto-enable gradient checkpointing for memory-hungry architectures
+    # Qwen3.5 DeltaNet layers use float32 recurrence which 2-3x memory vs standard attention
+    model_type = getattr(getattr(model, 'args', None), 'model_type', '')
+    if model_type in ('qwen3_5',) and not config.training.gradient_checkpointing:
+        print("Auto-enabling gradient checkpointing for Qwen3.5 (DeltaNet layers require float32)")
+        config.training.gradient_checkpointing = True
+
     # Full fine-tuning: validate and skip LoRA
     if config.adapter.method == "full":
         if config.model.quantization:
@@ -256,6 +266,9 @@ def train(config, resume: str | None = None):  # -> TrainState
         _enable_gradient_checkpointing(model)
         print("Gradient checkpointing enabled")
         print()
+
+    # Pre-flight memory safety check
+    _check_memory_safety(total_params, config)
 
     # Load or prepare training and validation data
     tokenizer_for_data = config.model.tokenizer_path or config.model.path
@@ -521,6 +534,83 @@ def _validate_resume(resume_path: Path, config) -> None:
             f"for {config.training.num_iters} iterations. "
             f"Increase 'num_iters' in your config to continue training."
         )
+
+
+def _check_memory_safety(total_params: int, config) -> None:
+    """Check estimated memory vs available RAM. Auto-adjust to prevent OOM.
+
+    On Apple Silicon, running out of memory freezes the entire system
+    (not just the process) because GPU and CPU share unified memory.
+    We auto-reduce settings rather than just warning.
+    """
+    try:
+        import math
+
+        from mlx_forge.models.memory import HardwareProfile
+
+        hw = HardwareProfile.detect()
+        budget_gb = hw.training_budget_gb
+
+        # Rough estimate: model weights (fp16) + activations + optimizer
+        bytes_per_param = 2  # fp16
+        if config.model.quantization:
+            bytes_per_param = config.model.quantization.bits / 8
+        weights_gb = (total_params * bytes_per_param) / (1024 ** 3)
+
+        # Infer hidden_dim from param count (rough: params ≈ 12 * L * D^2)
+        num_layers = 28  # conservative default
+        hidden_dim = int((total_params / (12 * num_layers)) ** 0.5)
+
+        def _estimate_activations(batch_size, seq_len, checkpointing):
+            effective_layers = math.sqrt(num_layers) if checkpointing else num_layers
+            return (batch_size * seq_len * hidden_dim * 2 * effective_layers * 8) / (1024 ** 3)
+
+        batch_size = config.training.batch_size
+        seq_len = config.data.max_seq_length
+        checkpointing = config.training.gradient_checkpointing
+
+        activations_gb = _estimate_activations(batch_size, seq_len, checkpointing)
+        total_est = weights_gb + activations_gb + 0.5
+        usage_pct = total_est / budget_gb if budget_gb > 0 else 1.0
+
+        adjusted = False
+
+        # Step 1: Auto-enable gradient checkpointing if over 80%
+        if usage_pct > 0.80 and not checkpointing:
+            config.training.gradient_checkpointing = True
+            checkpointing = True
+            activations_gb = _estimate_activations(batch_size, seq_len, True)
+            total_est = weights_gb + activations_gb + 0.5
+            usage_pct = total_est / budget_gb if budget_gb > 0 else 1.0
+            print(f"Auto-enabled gradient checkpointing (estimated {total_est:.1f} GB / {budget_gb:.1f} GB budget)")
+            adjusted = True
+
+        # Step 2: Reduce batch_size if still over 90%
+        while usage_pct > 0.90 and batch_size > 1:
+            batch_size -= 1
+            config.training.batch_size = batch_size
+            # Compensate with gradient accumulation
+            config.training.grad_accumulation_steps = max(
+                config.training.grad_accumulation_steps,
+                2,
+            )
+            activations_gb = _estimate_activations(batch_size, seq_len, checkpointing)
+            total_est = weights_gb + activations_gb + 0.5
+            usage_pct = total_est / budget_gb if budget_gb > 0 else 1.0
+            print(f"Auto-reduced batch_size to {batch_size} "
+                  f"(estimated {total_est:.1f} GB / {budget_gb:.1f} GB budget)")
+            adjusted = True
+
+        # Step 3: Hard warning if still over budget
+        if usage_pct > 1.0:
+            print(f"WARNING: Estimated memory ({total_est:.1f} GB) exceeds budget "
+                  f"({budget_gb:.1f} GB). Training may freeze your Mac.")
+            print("  Consider: reduce max_seq_length, enable QLoRA, or use a smaller model.")
+            print()
+        elif adjusted:
+            print()
+    except Exception:
+        pass  # Non-critical — don't block training on estimation failure
 
 
 def _enable_gradient_checkpointing(model) -> None:
