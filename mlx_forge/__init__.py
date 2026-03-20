@@ -213,13 +213,6 @@ def train(config, resume: str | None = None):  # -> TrainState
     print(f"Model loaded: {type(model).__name__}")
     print()
 
-    # Auto-enable gradient checkpointing for memory-hungry architectures
-    # Qwen3.5 DeltaNet layers use float32 recurrence which 2-3x memory vs standard attention
-    model_type = getattr(getattr(model, 'args', None), 'model_type', '')
-    if model_type in ('qwen3_5',) and not config.training.gradient_checkpointing:
-        print("Auto-enabling gradient checkpointing for Qwen3.5 (DeltaNet layers require float32)")
-        config.training.gradient_checkpointing = True
-
     # Full fine-tuning: validate and skip LoRA
     if config.adapter.method == "full":
         if config.model.quantization:
@@ -267,8 +260,8 @@ def train(config, resume: str | None = None):  # -> TrainState
         print("Gradient checkpointing enabled")
         print()
 
-    # Pre-flight memory safety check
-    _check_memory_safety(total_params, config)
+    # Pre-flight memory safety check — may auto-adjust batch_size and checkpointing
+    _check_memory_safety(total_params, config, model=model)
 
     # Load or prepare training and validation data
     tokenizer_for_data = config.model.tokenizer_path or config.model.path
@@ -536,12 +529,15 @@ def _validate_resume(resume_path: Path, config) -> None:
         )
 
 
-def _check_memory_safety(total_params: int, config) -> None:
+def _check_memory_safety(total_params: int, config, model=None) -> None:
     """Check estimated memory vs available RAM. Auto-adjust to prevent OOM.
 
     On Apple Silicon, running out of memory freezes the entire system
     (not just the process) because GPU and CPU share unified memory.
     We auto-reduce settings rather than just warning.
+
+    This is generic — works for ALL models on ALL Apple Silicon hardware.
+    Detects recurrent/hybrid architectures that use extra float32 memory.
     """
     try:
         import math
@@ -551,19 +547,52 @@ def _check_memory_safety(total_params: int, config) -> None:
         hw = HardwareProfile.detect()
         budget_gb = hw.training_budget_gb
 
-        # Rough estimate: model weights (fp16) + activations + optimizer
+        # --- 1. Model weights ---
         bytes_per_param = 2  # fp16
         if config.model.quantization:
             bytes_per_param = config.model.quantization.bits / 8
         weights_gb = (total_params * bytes_per_param) / (1024 ** 3)
 
-        # Infer hidden_dim from param count (rough: params ≈ 12 * L * D^2)
+        # --- 2. Detect architecture characteristics from the actual model ---
         num_layers = 28  # conservative default
-        hidden_dim = int((total_params / (12 * num_layers)) ** 0.5)
+        hidden_dim = 1024
+        memory_multiplier = 1.0  # extra multiplier for float32 architectures
 
+        if model is not None:
+            # Get actual layer count
+            layers = getattr(model, 'layers', None)
+            if layers is None and hasattr(model, 'model'):
+                layers = getattr(model.model, 'layers', None)
+            if layers is not None:
+                num_layers = len(layers)
+
+            # Get actual hidden_dim from model args
+            args = getattr(model, 'args', None)
+            if args is not None:
+                hidden_dim = getattr(args, 'hidden_size', hidden_dim)
+
+            # Detect recurrent/hybrid layers that use float32 internally
+            # (DeltaNet in Qwen3.5, SSM in Mamba/Jamba, etc.)
+            if layers is not None:
+                n_recurrent = sum(
+                    1 for layer in layers
+                    if (hasattr(layer, 'is_linear') and layer.is_linear)  # Qwen3.5 DeltaNet
+                    or hasattr(layer, 'ssm')  # Mamba SSM
+                    or hasattr(layer, 'mamba')  # Jamba hybrid
+                )
+                if n_recurrent > 0:
+                    # Recurrent layers use float32 internally → 2x memory per recurrent layer
+                    recurrent_ratio = n_recurrent / num_layers
+                    memory_multiplier = 1.0 + recurrent_ratio  # up to 2x for all-recurrent
+        else:
+            # Fallback: estimate hidden_dim from param count
+            hidden_dim = int((total_params / (12 * num_layers)) ** 0.5)
+
+        # --- 3. Estimate activation memory ---
         def _estimate_activations(batch_size, seq_len, checkpointing):
             effective_layers = math.sqrt(num_layers) if checkpointing else num_layers
-            return (batch_size * seq_len * hidden_dim * 2 * effective_layers * 8) / (1024 ** 3)
+            base = (batch_size * seq_len * hidden_dim * 2 * effective_layers * 8) / (1024 ** 3)
+            return base * memory_multiplier
 
         batch_size = config.training.batch_size
         seq_len = config.data.max_seq_length
@@ -575,6 +604,8 @@ def _check_memory_safety(total_params: int, config) -> None:
 
         adjusted = False
 
+        # --- 4. Auto-adjust if memory is tight ---
+
         # Step 1: Auto-enable gradient checkpointing if over 80%
         if usage_pct > 0.80 and not checkpointing:
             config.training.gradient_checkpointing = True
@@ -582,30 +613,40 @@ def _check_memory_safety(total_params: int, config) -> None:
             activations_gb = _estimate_activations(batch_size, seq_len, True)
             total_est = weights_gb + activations_gb + 0.5
             usage_pct = total_est / budget_gb if budget_gb > 0 else 1.0
-            print(f"Auto-enabled gradient checkpointing (estimated {total_est:.1f} GB / {budget_gb:.1f} GB budget)")
+            print(f"Auto-enabled gradient checkpointing "
+                  f"(estimated {total_est:.1f} GB / {budget_gb:.1f} GB budget)")
             adjusted = True
 
         # Step 2: Reduce batch_size if still over 90%
+        orig_batch = batch_size
         while usage_pct > 0.90 and batch_size > 1:
             batch_size -= 1
             config.training.batch_size = batch_size
-            # Compensate with gradient accumulation
-            config.training.grad_accumulation_steps = max(
-                config.training.grad_accumulation_steps,
-                2,
-            )
             activations_gb = _estimate_activations(batch_size, seq_len, checkpointing)
             total_est = weights_gb + activations_gb + 0.5
             usage_pct = total_est / budget_gb if budget_gb > 0 else 1.0
-            print(f"Auto-reduced batch_size to {batch_size} "
+
+        if batch_size < orig_batch:
+            # Compensate with gradient accumulation to maintain effective batch size
+            config.training.grad_accumulation_steps = max(
+                config.training.grad_accumulation_steps,
+                orig_batch // batch_size,
+            )
+            print(f"Auto-reduced batch_size {orig_batch} → {batch_size} "
+                  f"(grad_accum={config.training.grad_accumulation_steps}) "
                   f"(estimated {total_est:.1f} GB / {budget_gb:.1f} GB budget)")
             adjusted = True
 
         # Step 3: Hard warning if still over budget
         if usage_pct > 1.0:
             print(f"WARNING: Estimated memory ({total_est:.1f} GB) exceeds budget "
-                  f"({budget_gb:.1f} GB). Training may freeze your Mac.")
-            print("  Consider: reduce max_seq_length, enable QLoRA, or use a smaller model.")
+                  f"({budget_gb:.1f} GB, {hw.total_memory_gb:.0f} GB system).")
+            print("  This may freeze your Mac. Suggestions:")
+            if seq_len > 512:
+                print(f"  - Reduce max_seq_length (currently {seq_len})")
+            if not config.model.quantization:
+                print("  - Enable QLoRA: quantization: {bits: 4, group_size: 64}")
+            print("  - Use a smaller model")
             print()
         elif adjusted:
             print()

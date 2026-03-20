@@ -185,17 +185,15 @@ def gated_delta_recurrence(
     B, T, Hk, Dk = q.shape
     Hv, Dv = v.shape[-2:]
 
-    # Upcast everything to float32 for numerical stability
-    q = q.astype(mx.float32)
-    k = k.astype(mx.float32)
-    v = v.astype(mx.float32)
+    # NOTE: Do NOT upcast full Q/K/V to float32 here — upcast per-step instead.
+    # Full upcast would allocate ~384 MB/layer × 21 layers = 8 GB on Qwen3.5.
 
     if state is None:
         state = mx.zeros((B, Hv, Dv, Dk), dtype=mx.float32)
     else:
         state = state.astype(mx.float32)
 
-    # Compute gates (already float32 internally)
+    # Compute gates in float32 (small: B × T × Hv)
     beta = mx.sigmoid(b.astype(mx.float32))  # (B, T, Hv)
     g = _compute_decay(A_log, a, dt_bias)  # (B, T, Hv) — float32
 
@@ -207,8 +205,11 @@ def gated_delta_recurrence(
 
     outputs = []
     for t in range(T):
+        # Per-step upcast to float32 (tiny: B × H × D per tensor)
         y, state = _gated_delta_step(
-            q[:, t], k[:, t], v[:, t],
+            q[:, t].astype(mx.float32),
+            k[:, t].astype(mx.float32),
+            v[:, t].astype(mx.float32),
             g[:, t], beta[:, t], state,
         )
         outputs.append(y)
