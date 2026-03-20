@@ -57,7 +57,7 @@ export const api = {
       body: JSON.stringify(config),
     }),
   stopTraining: (trackId: string) =>
-    request<{ status: string }>(`/training/${trackId}/stop`, { method: 'POST' }),
+    request<{ status: string }>(`/training/${encodeURIComponent(trackId)}/stop`, { method: 'POST' }),
   getActiveTraining: () => request<import('./types').ActiveTraining[]>('/training/active'),
 
   // Inference

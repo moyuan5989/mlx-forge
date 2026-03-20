@@ -8,7 +8,7 @@ import { useActiveTraining } from '../hooks/useTraining'
 import StatCard from '../components/shared/StatCard'
 import StatusBadge from '../components/shared/StatusBadge'
 import { formatLoss, truncate } from '../lib/utils'
-import { api } from '../api/client'
+import { api, apiV2 } from '../api/client'
 
 export default function Dashboard() {
   const { data: runs, refetch: refetchRuns } = useRuns()
@@ -31,14 +31,33 @@ export default function Dashboard() {
     if (!confirm('Stop this training job?')) return
     setStoppingId(runId)
     try {
-      const activeList = await api.getActiveTraining()
-      const match = activeList.find((a) => a.run_id === runId || a.track_id?.includes(runId))
-      if (match) {
-        await api.stopTraining(match.track_id)
+      let stopped = false
+
+      // Try 1: Stop via TrainingService (V1 API)
+      try {
+        const activeList = await api.getActiveTraining()
+        const match = activeList.find((a) => a.run_id === runId || a.track_id?.includes(runId))
+        if (match) {
+          await api.stopTraining(match.track_id)
+          stopped = true
+        }
+      } catch { /* fall through to queue */ }
+
+      // Try 2: Stop via QueueService (V2 API) — covers queue-submitted jobs
+      if (!stopped) {
+        try {
+          const jobs = await apiV2.getQueue()
+          const queueMatch = jobs.find((j: any) =>
+            j.status === 'running' && (j.run_id === runId || j.track_id?.includes(runId))
+          )
+          if (queueMatch) {
+            await apiV2.cancelJob(queueMatch.id)
+            stopped = true
+          }
+        } catch { /* best effort */ }
       }
+
       refetchRuns()
-    } catch {
-      // best effort
     } finally {
       setStoppingId(null)
     }

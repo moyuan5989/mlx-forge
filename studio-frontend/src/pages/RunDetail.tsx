@@ -9,7 +9,7 @@ import LossChart from '../components/charts/LossChart'
 import { formatLoss, formatTokPerSec, formatMemory, formatNumber } from '../lib/utils'
 import type { TrainMetric, EvalMetric } from '../api/types'
 import { useQueryClient } from '@tanstack/react-query'
-import { api } from '../api/client'
+import { api, apiV2 } from '../api/client'
 
 export default function RunDetail() {
   const { id } = useParams<{ id: string }>()
@@ -84,15 +84,32 @@ export default function RunDetail() {
     if (!id || !confirm('Stop the running training job?')) return
     setStopping(true)
     try {
-      // Find the track_id from active training
-      const active = await api.getActiveTraining()
-      const match = active.find((a) => a.run_id === id || a.track_id?.includes(id))
-      if (match) {
-        await api.stopTraining(match.track_id)
+      let stopped = false
+
+      // Try 1: Stop via TrainingService (V1 API)
+      try {
+        const active = await api.getActiveTraining()
+        const match = active.find((a) => a.run_id === id || a.track_id?.includes(id))
+        if (match) {
+          await api.stopTraining(match.track_id)
+          stopped = true
+        }
+      } catch { /* fall through to queue */ }
+
+      // Try 2: Stop via QueueService (V2 API)
+      if (!stopped) {
+        try {
+          const jobs = await apiV2.getQueue()
+          const queueMatch = jobs.find((j: any) =>
+            j.status === 'running' && (j.run_id === id || j.track_id?.includes(id))
+          )
+          if (queueMatch) {
+            await apiV2.cancelJob(queueMatch.id)
+          }
+        } catch { /* best effort */ }
       }
+
       queryClient.invalidateQueries({ queryKey: ['runs', id] })
-    } catch {
-      // best effort
     } finally {
       setStopping(false)
     }

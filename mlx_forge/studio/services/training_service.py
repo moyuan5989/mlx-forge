@@ -44,9 +44,13 @@ class TrainingService:
             stderr=asyncio.subprocess.PIPE,
         )
 
-        # Generate a tracking ID from the config
+        # Generate a URL-safe tracking ID from the config.
+        # Model names contain "/" (e.g., "Qwen/Qwen3.5-0.8B") which breaks
+        # the REST endpoint /{track_id}/stop — FastAPI interprets "/" as
+        # a path separator and returns 404.
         model_name = config_dict.get("model", {}).get("path", "unknown")
-        track_id = f"{model_name}_{proc.pid}"
+        safe_name = model_name.replace("/", "--")
+        track_id = f"{safe_name}_{proc.pid}"
 
         self._processes[track_id] = proc
         self._configs[track_id] = config_dict
