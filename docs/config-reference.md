@@ -12,6 +12,7 @@ model:
   tokenizer_path: null          # Optional separate tokenizer
   trust_remote_code: false
   revision: null                # HF revision/commit hash
+  vision: false                 # Enable vision model support
   quantization:                 # Optional QLoRA
     bits: 4
     group_size: 64
@@ -31,13 +32,14 @@ data:
   max_seq_length: 2048
   mask_prompt: true
   packing: false
+  streaming: false              # Stream large datasets without loading into RAM
 
 training:
   batch_size: 2
   num_iters: 1000
   learning_rate: 1e-5
   optimizer: adam                # adam, adamw, sgd, adafactor
-  training_type: sft            # sft, dpo, grpo
+  training_type: sft            # sft, dpo, grpo, orpo, kto, simpo
   gradient_checkpointing: false
   steps_per_report: 10
   steps_per_eval: 200
@@ -59,6 +61,7 @@ runtime:
 | `tokenizer_path` | string | null | Separate tokenizer path |
 | `trust_remote_code` | bool | false | Trust remote code |
 | `revision` | string | null | HF revision hash |
+| `vision` | bool | false | Enable vision model support (requires mlx-vlm) |
 | `quantization.bits` | int | 4 | Quantization bits (4 or 8) |
 | `quantization.group_size` | int | 64 | Quantization group size |
 
@@ -87,6 +90,7 @@ runtime:
 | `max_seq_length` | int | 2048 | Maximum sequence length |
 | `mask_prompt` | bool | true | Mask prompt tokens from loss |
 | `packing` | bool | false | Enable sequence packing |
+| `streaming` | bool | false | Stream data without loading into RAM |
 
 ### `training`
 
@@ -96,7 +100,7 @@ runtime:
 | `num_iters` | int | 1000 | Total training iterations |
 | `learning_rate` | float | 1e-5 | Learning rate |
 | `optimizer` | string | "adam" | Optimizer (adam, adamw, sgd, adafactor) |
-| `training_type` | string | "sft" | Training type (sft, dpo, grpo) |
+| `training_type` | string | "sft" | Training type (sft, dpo, grpo, orpo, kto, simpo) |
 | `gradient_checkpointing` | bool | false | Enable gradient checkpointing |
 | `grad_accumulation_steps` | int | 1 | Gradient accumulation steps |
 | `max_grad_norm` | float | null | Gradient clipping norm |
@@ -115,3 +119,22 @@ runtime:
 | `grpo_clip_range` | float | 0.2 | PPO clip range |
 | `grpo_max_completion_length` | int | 256 | Max completion tokens |
 | `grpo_reward_function` | string | "length" | Reward function name |
+
+#### ORPO-Specific Fields
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `orpo_beta` | float | 0.1 | Weight for odds ratio loss component |
+
+#### KTO-Specific Fields
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `kto_beta` | float | 0.1 | KL penalty weight for unpaired preferences |
+
+#### SimPO-Specific Fields
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `simpo_beta` | float | 2.0 | Temperature scaling for reward difference |
+| `simpo_gamma` | float | 0.5 | Margin term for length-normalized rewards |

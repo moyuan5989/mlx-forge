@@ -2,6 +2,62 @@
 
 All notable changes to MLX Forge will be documented in this file.
 
+## [0.6.3] - 2026-03-23
+
+### Architecture Expansion (M28)
+- **25+ model architectures** (up from 8): Added Mixtral (MoE), DeepSeek V2/V3 (MoE+MLA), Cohere/Cohere2, Llama 4, Mamba/Mamba2 (SSM), Jamba (hybrid), Falcon H1, OLMo2, InternLM2, StarCoder2, GLM4, Granite, StableLM, OpenELM
+- New base utilities: `SwitchGLU` (MoE routing), `MambaBlock` (SSM), `MultiLatentAttention` (MLA)
+- `ArraysCache` for SSM/recurrent layer state
+- GGUF weight mappings for Cohere, Mixtral, InternLM2, GLM4, StarCoder2
+
+### New Training Methods (M29)
+- **ORPO** — Odds Ratio Preference Optimization (no reference model needed)
+- **KTO** — Kahneman-Tversky Optimization for unpaired preference data
+- **SimPO** — Simple Preference Optimization with length normalization
+- **GRPO fix** — Now uses frozen reference model weights instead of `stop_gradient` for correct KL computation
+- New data format: KTO (`{"text": "...", "label": 1}`)
+
+### GGUF Quantized Export (M30)
+- `--quantize q4_0` produces 4x smaller GGUF files for Ollama/llama.cpp
+- `--quantize q8_0` produces 2x smaller files with higher quality
+- Block quantization in pure Python/NumPy (no external dependencies)
+
+### Speculative Decoding (M31)
+- `--draft-model` flag for 1.5-2x faster inference
+- Draft-verify-accept/reject loop with automatic cache rewind
+- `KVCache.trim()` for speculative rewind
+- Prompt caching: save/load KV cache state to disk
+
+### Streaming Data Pipeline (M33)
+- `data.streaming: true` for datasets that don't fit in RAM
+- `StreamingHFDataset` — wraps HF `IterableDataset` with shuffle buffer
+- `StreamingJSONLDataset` — memory-efficient line-by-line JSONL reading
+- `tokenize_single()` for on-the-fly tokenization
+
+### Vision Model Support (M32 + M34)
+- VLM inference via `mlx-vlm` integration (`pip install mlx-forge[vision]`)
+- VLM LoRA fine-tuning with `VLMSFTTrainer` (batch_size=1, gradient accumulation)
+- `VisionDataCollator` for image+text processing
+- `--vision` flag on generate, serve, and train commands
+
+### Memory Safety & Stability
+- **Auto memory adjustment**: Detects hardware at runtime, auto-enables gradient checkpointing (>80% budget) and reduces batch_size (>90% budget) for ANY model on ANY Apple Silicon
+- **DeltaNet float32 fix**: Per-chunk upcast in `gated_delta_chunkwise()` reduces peak memory 32x (was upcasting full sequence before loop)
+- **Safe wired limit**: `mx.set_wired_limit()` reduced to 75% of max to prevent macOS freeze
+- **Recurrent layer detection**: Memory estimator auto-applies 2x multiplier for DeltaNet/SSM/Mamba layers
+
+### Studio Bug Fixes
+- **Stop training button fixed**: `track_id` contained "/" from HF model names breaking URL routing → sanitized to use "--"
+- **Status detection fixed**: Replaced 60s mtime timeout with heartbeat file + 300s window + subprocess liveness check
+- **run_id tracking fixed**: Queue jobs now report real run_id immediately via `on_run_id` callback instead of after process exit
+- **Duplicate job prevention**: Queue discards stale jobs on restart; rejects duplicate model+dataset submissions
+- **Queue subprocess kill**: `cancel()` now sends SIGINT to subprocess before updating job status
+- **Shared TrainingService**: Queue uses shared instance so `getActiveTraining()` sees queue-spawned processes
+
+### Tests
+- 180 new tests across 7 test files (M28-M34)
+- Total: 897+ tests, all passing on Python 3.10/3.11/3.12
+
 ## [0.5.0] - 2026-03-17
 
 ### Features

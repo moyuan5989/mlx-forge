@@ -12,7 +12,7 @@ requires-python = ">=3.10"
 authors = [
     { name = "Jiekai Wang" },
 ]
-keywords = ["mlx", "lora", "fine-tuning", "apple-silicon", "llm", "qlora", "dpo"]
+keywords = ["mlx", "lora", "fine-tuning", "apple-silicon", "llm", "qlora", "dpo", "dora", "grpo", "orpo", "kto", "simpo", "speculative-decoding", "vision", "gguf"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",

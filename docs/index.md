@@ -2,18 +2,21 @@
 
 **Fine-tune, experiment with, and run LLMs locally on your Mac.**
 
-MLX Forge is a comprehensive LoRA/DoRA/Full fine-tuning framework built on Apple's [MLX](https://github.com/ml-explore/mlx) framework, optimized for Apple Silicon.
+MLX Forge is a comprehensive fine-tuning framework built on Apple's [MLX](https://github.com/ml-explore/mlx), optimized for Apple Silicon. It supports 25+ model architectures, 8 training methods, speculative decoding, vision models, and streaming datasets.
 
 ## Features
 
-- **Multiple Training Methods**: LoRA, DoRA, Full Fine-Tuning, DPO, GRPO
+- **8 Training Methods**: LoRA, DoRA, Full Fine-Tuning, DPO, GRPO, ORPO, KTO, SimPO
+- **25+ Architectures**: Llama, Qwen, Gemma, Phi, Mixtral, DeepSeek V2/V3, Mamba, Cohere, and more
 - **Browser-Based Studio UI**: Training wizard, live loss charts, inference playground
 - **OpenAI-Compatible API**: Serve fine-tuned models with `/v1/chat/completions`
+- **Speculative Decoding**: 1.5-2x faster inference with draft models
+- **Vision Model Support**: Fine-tune and run VLMs via mlx-vlm integration
 - **HuggingFace Integration**: Load 200k+ datasets, push models to Hub
-- **GGUF Export**: Deploy to Ollama/llama.cpp
+- **GGUF Quantized Export**: Q4_0/Q8_0 for Ollama/llama.cpp deployment
 - **QLoRA Support**: 4-bit quantized fine-tuning for memory efficiency
-- **Sequence Packing**: Train faster with packed sequences
-- **7 Model Architectures**: Llama, Qwen2/3, Phi-3/4, Gemma, Mistral
+- **Streaming Data**: Train on datasets that don't fit in RAM
+- **Auto Memory Safety**: Adjusts batch size and checkpointing per hardware
 
 ## Comparison
 
@@ -21,15 +24,21 @@ MLX Forge is a comprehensive LoRA/DoRA/Full fine-tuning framework built on Apple
 |---------|-----------|--------|----------|
 | Studio UI | Yes | No | No |
 | OpenAI API | Yes | Yes | No |
-| LoRA | Yes | Yes | Yes |
-| DoRA | Yes | Yes | No |
+| LoRA / DoRA | Yes | Yes | Yes / No |
 | Full FT | Yes | Yes | No |
+| DPO | Yes | No | Yes |
 | GRPO | Yes | No | Yes |
-| GGUF Export | Yes | Yes | No |
+| ORPO / KTO / SimPO | Yes | No | Yes |
+| Speculative Decoding | Yes | Yes | No |
+| Vision Training | Yes | No | No |
+| GGUF Quantized Export | Yes | Yes | No |
+| Streaming Data | Yes | No | No |
 | HF Datasets | Yes | Yes | No |
 | Hub Upload | Yes | Yes | No |
 | Sequence Packing | Yes | No | No |
 | Job Queue | Yes | No | No |
+| Auto Memory Safety | Yes | No | No |
+| Architectures | 25+ | 40+ | 10+ |
 
 ## Quick Start
 
