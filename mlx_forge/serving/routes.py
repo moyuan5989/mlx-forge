@@ -21,6 +21,10 @@ from mlx_forge.serving.openai_types import (
     CompletionResponse,
     CompletionStreamChoice,
     DeltaContent,
+    EmbeddingData,
+    EmbeddingRequest,
+    EmbeddingResponse,
+    EmbeddingUsage,
     ModelListResponse,
     ModelObject,
     StreamChoice,
@@ -323,6 +327,49 @@ async def _stream_completion(mgr, prompt_tokens, request, stop_sequences):
     )
     yield f"data: {final_chunk.model_dump_json()}\n\n"
     yield "data: [DONE]\n\n"
+
+
+@router.post("/v1/embeddings")
+async def embeddings(request: EmbeddingRequest):
+    """OpenAI-compatible embeddings endpoint for encoder models."""
+    _ensure_model_loaded(request.model)
+    mgr = get_manager()
+
+    model_cat = getattr(mgr.model, "model_category", "decoder")
+    if model_cat != "encoder":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Model '{request.model}' is not an encoder model (got {model_cat}). "
+            "Embeddings require BERT/RoBERTa/DeBERTa.",
+        )
+
+    from mlx_forge.inference.encoder import encode
+
+    texts = request.input if isinstance(request.input, list) else [request.input]
+
+    emb_list = encode(
+        mgr.model,
+        mgr.tokenizer,
+        texts,
+        pooling="cls",
+        normalize=True,
+    )
+
+    total_tokens = sum(len(mgr.tokenizer.encode(t)) for t in texts)
+
+    data = [
+        EmbeddingData(embedding=emb.tolist(), index=i)
+        for i, emb in enumerate(emb_list)
+    ]
+
+    return EmbeddingResponse(
+        data=data,
+        model=request.model,
+        usage=EmbeddingUsage(
+            prompt_tokens=total_tokens,
+            total_tokens=total_tokens,
+        ),
+    )
 
 
 @router.get("/v1/models")

@@ -21,6 +21,10 @@ MODEL_REMAPPING = {
     "falcon_mamba": "mamba",
     "qwen2_5": "qwen2",
     "deepseek": "llama",
+    "roberta": "bert",
+    "deberta-v2": "deberta",
+    "mt5": "t5",
+    "mbart": "bart",
 }
 
 # Explicit allowlist of supported architectures
@@ -50,6 +54,10 @@ SUPPORTED_ARCHITECTURES = {
     "granite": "mlx_forge.models.architectures.granite",
     "stablelm": "mlx_forge.models.architectures.stablelm",
     "openelm": "mlx_forge.models.architectures.openelm",
+    "bert": "mlx_forge.models.architectures.bert",
+    "deberta": "mlx_forge.models.architectures.deberta",
+    "t5": "mlx_forge.models.architectures.t5",
+    "bart": "mlx_forge.models.architectures.bart",
 }
 
 

@@ -28,6 +28,55 @@ PRESETS: dict[str, list[str]] = {
         "*.mlp.up_proj",
         "*.mlp.down_proj",
     ],
+    # BERT/RoBERTa/DeBERTa presets
+    "bert-attention": ["*.attention.query", "*.attention.value"],
+    "bert-attention-all": [
+        "*.attention.query",
+        "*.attention.key",
+        "*.attention.value",
+        "*.attention.dense",
+    ],
+    "bert-mlp": ["*.mlp.dense", "*.mlp.dense_out"],
+    "bert-all": [
+        "*.attention.query",
+        "*.attention.key",
+        "*.attention.value",
+        "*.attention.dense",
+        "*.mlp.dense",
+        "*.mlp.dense_out",
+    ],
+    # T5/mT5 presets
+    "t5-encoder": ["encoder.layers.*.self_attn.q_proj", "encoder.layers.*.self_attn.v_proj"],
+    "t5-decoder": [
+        "decoder.layers.*.self_attn.q_proj",
+        "decoder.layers.*.self_attn.v_proj",
+        "decoder.layers.*.cross_attn.q_proj",
+        "decoder.layers.*.cross_attn.v_proj",
+    ],
+    "t5-all": [
+        "encoder.layers.*.self_attn.q_proj",
+        "encoder.layers.*.self_attn.v_proj",
+        "decoder.layers.*.self_attn.q_proj",
+        "decoder.layers.*.self_attn.v_proj",
+        "decoder.layers.*.cross_attn.q_proj",
+        "decoder.layers.*.cross_attn.v_proj",
+    ],
+    # BART/mBART presets
+    "bart-encoder": ["encoder.layers.*.self_attn.q_proj", "encoder.layers.*.self_attn.v_proj"],
+    "bart-decoder": [
+        "decoder.layers.*.self_attn.q_proj",
+        "decoder.layers.*.self_attn.v_proj",
+        "decoder.layers.*.cross_attn.q_proj",
+        "decoder.layers.*.cross_attn.v_proj",
+    ],
+    "bart-all": [
+        "encoder.layers.*.self_attn.q_proj",
+        "encoder.layers.*.self_attn.v_proj",
+        "decoder.layers.*.self_attn.q_proj",
+        "decoder.layers.*.self_attn.v_proj",
+        "decoder.layers.*.cross_attn.q_proj",
+        "decoder.layers.*.cross_attn.v_proj",
+    ],
 }
 
 

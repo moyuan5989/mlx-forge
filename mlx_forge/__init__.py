@@ -460,6 +460,46 @@ def train(config, resume: str | None = None):  # -> TrainState
             callbacks=callbacks,
             checkpoint_manager=manager,
         )
+    elif config.training.training_type == "mlm":
+        model_cat = getattr(model, 'model_category', 'decoder')
+        if model_cat != 'encoder':
+            raise ValueError(
+                "MLM training requires an encoder model (BERT, RoBERTa, DeBERTa). "
+                f"Got model_category='{model_cat}'."
+            )
+        from mlx_forge.losses.mlm import MLMHead, MLMWrapper
+        from mlx_forge.trainer.mlm_trainer import MLMTrainer
+
+        mlm_head = MLMHead(
+            model.args.hidden_size,
+            model.args.vocab_size,
+            getattr(model.args, 'layer_norm_eps', 1e-12),
+        )
+        wrapper = MLMWrapper(model, mlm_head)
+        trainer = MLMTrainer(
+            model=wrapper,
+            config=config,
+            train_dataset=train_dataset,
+            val_dataset=val_dataset,
+            callbacks=callbacks,
+            checkpoint_manager=manager,
+        )
+    elif config.training.training_type == "seq2seq":
+        model_cat = getattr(model, 'model_category', 'decoder')
+        if model_cat != 'encoder_decoder':
+            raise ValueError(
+                "Seq2seq training requires an encoder-decoder model (T5, BART). "
+                f"Got model_category='{model_cat}'."
+            )
+        from mlx_forge.trainer.seq2seq_trainer import Seq2SeqTrainer
+        trainer = Seq2SeqTrainer(
+            model=model,
+            config=config,
+            train_dataset=train_dataset,
+            val_dataset=val_dataset,
+            callbacks=callbacks,
+            checkpoint_manager=manager,
+        )
     else:
         trainer = Trainer(
             model=model,
@@ -660,6 +700,16 @@ def _enable_gradient_checkpointing(model) -> None:
 
     if hasattr(model, "model") and hasattr(model.model, "layers"):
         for layer in model.model.layers:
+            layer.__call__ = mx.checkpoint(layer.__call__)
+
+    # Encoder-only models (BERT via MLMWrapper or direct)
+    if hasattr(model, "encoder") and hasattr(model.encoder, "layers"):
+        for layer in model.encoder.layers:
+            layer.__call__ = mx.checkpoint(layer.__call__)
+
+    # Encoder-decoder models (T5, BART)
+    if hasattr(model, "decoder") and hasattr(model.decoder, "layers"):
+        for layer in model.decoder.layers:
             layer.__call__ = mx.checkpoint(layer.__call__)
 
 

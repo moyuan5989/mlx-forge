@@ -5,10 +5,11 @@ from __future__ import annotations
 from typing import Literal
 
 
-def detect_format(samples: list[dict]) -> Literal["chat", "completions", "text", "preference", "kto"]:
+def detect_format(samples: list[dict]) -> Literal["chat", "completions", "text", "preference", "kto", "seq2seq"]:
     """Auto-detect dataset format from the first sample's keys.
 
     - Has "chosen" and "rejected" -> preference format (DPO)
+    - Has "input" and "target" -> seq2seq format (T5/BART)
     - Has "messages" -> chat format
     - Has "prompt" and "completion" -> completions format
     - Has "text" -> text format
@@ -22,6 +23,8 @@ def detect_format(samples: list[dict]) -> Literal["chat", "completions", "text",
 
     if "chosen" in keys and "rejected" in keys:
         return "preference"
+    elif "input" in keys and "target" in keys:
+        return "seq2seq"
     elif "text" in keys and "label" in keys:
         return "kto"
     elif "messages" in keys:
@@ -33,7 +36,7 @@ def detect_format(samples: list[dict]) -> Literal["chat", "completions", "text",
     else:
         raise ValueError(
             f"Unknown dataset format. Expected 'messages', 'prompt'+'completion', "
-            f"'text', or 'chosen'+'rejected' keys. Found keys: {sorted(keys)}"
+            f"'text', 'input'+'target', or 'chosen'+'rejected' keys. Found keys: {sorted(keys)}"
         )
 
 
@@ -56,6 +59,8 @@ def validate_samples(samples: list[dict], fmt: str) -> list[str]:
             errors.extend(_validate_preference_sample(sample, idx))
         elif fmt == "kto":
             errors.extend(_validate_kto_sample(sample, idx))
+        elif fmt == "seq2seq":
+            errors.extend(_validate_seq2seq_sample(sample, idx))
         else:
             errors.append(f"Unknown format: {fmt}")
             break
@@ -212,5 +217,26 @@ def _validate_preference_sample(sample: dict, idx: int) -> list[str]:
                     f"Sample {idx}, {field}[{msg_idx}]: 'content' must be a string, "
                     f"got {type(msg['content']).__name__}"
                 )
+
+    return errors
+
+
+def _validate_seq2seq_sample(sample: dict, idx: int) -> list[str]:
+    """Validate a single seq2seq format sample."""
+    errors = []
+
+    if "input" not in sample:
+        errors.append(f"Sample {idx}: missing 'input' field")
+    elif not isinstance(sample["input"], str):
+        errors.append(
+            f"Sample {idx}: 'input' must be a string, got {type(sample['input']).__name__}"
+        )
+
+    if "target" not in sample:
+        errors.append(f"Sample {idx}: missing 'target' field")
+    elif not isinstance(sample["target"], str):
+        errors.append(
+            f"Sample {idx}: 'target' must be a string, got {type(sample['target']).__name__}"
+        )
 
     return errors

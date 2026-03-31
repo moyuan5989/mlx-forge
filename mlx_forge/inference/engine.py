@@ -152,6 +152,78 @@ def generate_tokens(
         mx.eval(next_token)
 
 
+def generate_seq2seq_tokens(
+    model,
+    input_tokens: list[int],
+    tokenizer,
+    *,
+    temperature: float = 0.7,
+    top_p: float = 0.9,
+    max_tokens: int = 512,
+    seed: int | None = None,
+):
+    """Generate tokens from an encoder-decoder model. Yields token IDs.
+
+    Two-phase generation:
+    1. Encode the input sequence once.
+    2. Decode autoregressively using cached encoder hidden states.
+
+    Args:
+        model: Encoder-decoder model (model_category == "encoder_decoder").
+        input_tokens: Tokenized source sequence.
+        tokenizer: Tokenizer instance (for EOS detection).
+        temperature: Sampling temperature.
+        top_p: Nucleus sampling threshold.
+        max_tokens: Maximum number of tokens to generate.
+        seed: Optional RNG seed.
+
+    Yields:
+        Token IDs (int) one at a time.
+    """
+    if seed is not None:
+        mx.random.seed(seed)
+
+    # Phase 1: Encode input
+    enc_ids = mx.array(input_tokens)[None]  # (1, T_enc)
+    encoder_hidden = model.encode(enc_ids)
+
+    # Phase 2: Decode autoregressively
+    cache = model.make_cache()
+
+    # Start with decoder_start_token_id
+    decoder_start_id = getattr(model.args, "decoder_start_token_id", 0)
+    dec_token = mx.array([[decoder_start_id]])
+
+    logits = model.decode(dec_token, encoder_hidden, cache=cache)
+    next_token = sample_next_token(
+        logits[0, -1, :],
+        temperature=temperature,
+        top_p=top_p,
+    )
+    mx.eval(next_token)
+
+    eos_id = getattr(tokenizer, "eos_token_id", None)
+    if eos_id is None:
+        eos_id = getattr(model.args, "eos_token_id", 1)
+
+    for _ in range(max_tokens):
+        token_id = next_token.item()
+
+        if token_id == eos_id:
+            return
+
+        yield token_id
+
+        dec_token = next_token.reshape(1, 1)
+        logits = model.decode(dec_token, encoder_hidden, cache=cache)
+        next_token = sample_next_token(
+            logits[0, -1, :],
+            temperature=temperature,
+            top_p=top_p,
+        )
+        mx.eval(next_token)
+
+
 def generate(
     model,
     tokenizer,

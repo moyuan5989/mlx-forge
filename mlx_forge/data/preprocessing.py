@@ -65,6 +65,8 @@ def tokenize_dataset(
             result = _tokenize_text(sample, tokenizer, max_seq_length)
         elif fmt == "preference":
             result = _tokenize_preference(sample, tokenizer, mask_prompt, max_seq_length)
+        elif fmt == "seq2seq":
+            result = _tokenize_seq2seq(sample, tokenizer, max_seq_length)
         else:
             raise ValueError(f"Unknown format: {fmt}")
 
@@ -225,4 +227,110 @@ def _tokenize_preference(
         "chosen_labels": chosen["labels"],
         "rejected_input_ids": rejected["input_ids"],
         "rejected_labels": rejected["labels"],
+    }
+
+
+def _tokenize_mlm(
+    sample: dict,
+    tokenizer,
+    max_seq_length: int,
+    mlm_probability: float = 0.15,
+    seed: int | None = None,
+) -> dict:
+    """Tokenize a text sample for Masked Language Modeling.
+
+    Randomly masks ~15% of tokens: 80% → [MASK], 10% → random, 10% → keep.
+    Excludes special tokens ([CLS], [SEP], [PAD]) from masking.
+
+    Returns:
+        {"input_ids": masked, "labels": original_at_masked_else_-100}
+    """
+    import random
+
+    if seed is not None:
+        random.seed(seed)
+
+    text = sample["text"]
+    tokens = tokenizer.encode(text, add_special_tokens=True)
+
+    if len(tokens) > max_seq_length:
+        tokens = tokens[:max_seq_length]
+
+    input_ids = list(tokens)
+    labels = [-100] * len(tokens)
+
+    # Identify special tokens to exclude from masking
+    special_ids = set()
+    for attr in ("cls_token_id", "sep_token_id", "pad_token_id", "mask_token_id"):
+        tid = getattr(tokenizer, attr, None)
+        if tid is not None:
+            special_ids.add(tid)
+
+    mask_token_id = getattr(tokenizer, "mask_token_id", None)
+    vocab_size = getattr(tokenizer, "vocab_size", 30522)
+
+    for i in range(len(tokens)):
+        if tokens[i] in special_ids:
+            continue
+
+        if random.random() < mlm_probability:
+            labels[i] = tokens[i]  # Record original token
+
+            r = random.random()
+            if r < 0.8:
+                # 80%: replace with [MASK]
+                if mask_token_id is not None:
+                    input_ids[i] = mask_token_id
+            elif r < 0.9:
+                # 10%: replace with random token
+                input_ids[i] = random.randint(0, vocab_size - 1)
+            # else 10%: keep original
+
+    return {"input_ids": input_ids, "labels": labels}
+
+
+def _tokenize_seq2seq(
+    sample: dict,
+    tokenizer,
+    max_seq_length: int,
+) -> dict:
+    """Tokenize a seq2seq sample (input → target) for encoder-decoder training.
+
+    Tokenizes input and target separately. Prepends decoder_start_token_id
+    to decoder input.
+
+    Returns:
+        {"encoder_input_ids": [...], "decoder_input_ids": [...], "decoder_labels": [...]}
+    """
+    input_text = sample["input"]
+    target_text = sample["target"]
+
+    encoder_ids = tokenizer.encode(input_text, add_special_tokens=True)
+    target_ids = tokenizer.encode(target_text, add_special_tokens=True)
+
+    # Truncate
+    if len(encoder_ids) > max_seq_length:
+        encoder_ids = encoder_ids[:max_seq_length]
+    if len(target_ids) > max_seq_length:
+        target_ids = target_ids[:max_seq_length]
+
+    # Decoder input: prepend decoder_start_token_id
+    decoder_start_id = getattr(tokenizer, "decoder_start_token_id", None)
+    if decoder_start_id is None:
+        decoder_start_id = getattr(tokenizer, "pad_token_id", 0)
+
+    decoder_input_ids = [decoder_start_id] + list(target_ids)
+    decoder_labels = list(target_ids) + [
+        getattr(tokenizer, "eos_token_id", 1)
+    ]
+
+    # Truncate decoder side
+    if len(decoder_input_ids) > max_seq_length:
+        decoder_input_ids = decoder_input_ids[:max_seq_length]
+        decoder_labels = decoder_labels[:max_seq_length]
+
+    return {
+        "encoder_input_ids": list(encoder_ids),
+        "decoder_input_ids": decoder_input_ids,
+        "decoder_labels": decoder_labels,
     }

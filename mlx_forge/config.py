@@ -155,7 +155,9 @@ class TrainingParams(BaseModel):
     keep_last_n_checkpoints: int = 3
 
     # V2: Training type and DPO parameters
-    training_type: Literal["sft", "dpo", "grpo", "orpo", "kto", "simpo"] = "sft"
+    training_type: Literal["sft", "dpo", "grpo", "orpo", "kto", "simpo", "mlm", "seq2seq"] = "sft"
+    mlm_probability: float = 0.15
+    pooling_strategy: Literal["cls", "mean"] = "cls"
     dpo_beta: float = 0.1
     dpo_reference_free: bool = True
 

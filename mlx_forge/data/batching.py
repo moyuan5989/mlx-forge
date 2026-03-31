@@ -233,6 +233,111 @@ def _build_batch(batch_samples, batch_size, max_seq_length):
     )
 
 
+def iterate_mlm_batches(dataset, config):
+    """Yield (input_ids, labels, attention_mask) tuples for MLM training.
+
+    input_ids:       mx.array, dtype=int32, shape=(B, T)
+    labels:          mx.array, dtype=int32, shape=(B, T)
+    attention_mask:  mx.array, dtype=int32, shape=(B, T) — 1 for real, 0 for padding
+    """
+    batch_size = config.training.batch_size
+    max_seq_length = config.data.max_seq_length
+
+    sorted_samples = sorted(
+        dataset,
+        key=lambda s: _get_length(s, "input_ids"),
+        reverse=True,
+    )
+
+    pad_token_id = 0  # Default padding
+
+    for batch_start in range(0, len(sorted_samples), batch_size):
+        batch_samples = sorted_samples[batch_start : batch_start + batch_size]
+
+        max_len_in_batch = _get_length(batch_samples[0], "input_ids")
+        padded_length = _round_up_to_multiple(max_len_in_batch, 32)
+        padded_length = min(padded_length, max_seq_length)
+
+        batch_input_ids = np.full((batch_size, padded_length), pad_token_id, dtype=np.int32)
+        batch_labels = np.full((batch_size, padded_length), -100, dtype=np.int32)
+        batch_attention_mask = np.zeros((batch_size, padded_length), dtype=np.int32)
+
+        for i, sample in enumerate(batch_samples):
+            input_ids = _to_list(sample["input_ids"])
+            labels = _to_list(sample["labels"])
+
+            if len(input_ids) > max_seq_length:
+                input_ids = input_ids[:max_seq_length]
+                labels = labels[:max_seq_length]
+
+            batch_input_ids[i, :len(input_ids)] = input_ids
+            batch_labels[i, :len(labels)] = labels
+            batch_attention_mask[i, :len(input_ids)] = 1
+
+        yield (
+            mx.array(batch_input_ids, dtype=mx.int32),
+            mx.array(batch_labels, dtype=mx.int32),
+            mx.array(batch_attention_mask, dtype=mx.int32),
+        )
+
+
+def iterate_seq2seq_batches(dataset, config):
+    """Yield (encoder_ids, decoder_ids, decoder_labels, encoder_attention_mask) tuples.
+
+    For encoder-decoder (T5/BART) training. Pads encoder and decoder independently.
+    """
+    batch_size = config.training.batch_size
+    max_seq_length = config.data.max_seq_length
+
+    sorted_samples = sorted(
+        dataset,
+        key=lambda s: max(
+            _get_length(s, "encoder_input_ids"),
+            _get_length(s, "decoder_input_ids"),
+        ),
+        reverse=True,
+    )
+
+    for batch_start in range(0, len(sorted_samples), batch_size):
+        batch_samples = sorted_samples[batch_start : batch_start + batch_size]
+
+        max_enc_len = max(_get_length(s, "encoder_input_ids") for s in batch_samples)
+        max_dec_len = max(_get_length(s, "decoder_input_ids") for s in batch_samples)
+
+        enc_padded = _round_up_to_multiple(max_enc_len, 32)
+        enc_padded = min(enc_padded, max_seq_length)
+        dec_padded = _round_up_to_multiple(max_dec_len, 32)
+        dec_padded = min(dec_padded, max_seq_length)
+
+        batch_enc_ids = np.zeros((batch_size, enc_padded), dtype=np.int32)
+        batch_dec_ids = np.zeros((batch_size, dec_padded), dtype=np.int32)
+        batch_dec_labels = np.full((batch_size, dec_padded), -100, dtype=np.int32)
+        batch_enc_mask = np.zeros((batch_size, enc_padded), dtype=np.int32)
+
+        for i, sample in enumerate(batch_samples):
+            enc_ids = _to_list(sample["encoder_input_ids"])
+            dec_ids = _to_list(sample["decoder_input_ids"])
+            dec_labels = _to_list(sample["decoder_labels"])
+
+            if len(enc_ids) > max_seq_length:
+                enc_ids = enc_ids[:max_seq_length]
+            if len(dec_ids) > max_seq_length:
+                dec_ids = dec_ids[:max_seq_length]
+                dec_labels = dec_labels[:max_seq_length]
+
+            batch_enc_ids[i, :len(enc_ids)] = enc_ids
+            batch_dec_ids[i, :len(dec_ids)] = dec_ids
+            batch_dec_labels[i, :len(dec_labels)] = dec_labels
+            batch_enc_mask[i, :len(enc_ids)] = 1
+
+        yield (
+            mx.array(batch_enc_ids, dtype=mx.int32),
+            mx.array(batch_dec_ids, dtype=mx.int32),
+            mx.array(batch_dec_labels, dtype=mx.int32),
+            mx.array(batch_enc_mask, dtype=mx.int32),
+        )
+
+
 def _round_up_to_multiple(value: int, multiple: int) -> int:
     """Round value up to the nearest multiple."""
     return ((value + multiple - 1) // multiple) * multiple

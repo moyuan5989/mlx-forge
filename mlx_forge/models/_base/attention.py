@@ -70,6 +70,28 @@ def create_attention_mask(
     return "causal"
 
 
+def create_padding_mask(attention_mask: mx.array) -> Optional[mx.array]:
+    """Convert a (B, T) binary padding mask to attention mask format.
+
+    Args:
+        attention_mask: (B, T) with 1 for real tokens, 0 for padding.
+
+    Returns:
+        (B, 1, 1, T) additive mask where padding positions are -1e9 (large negative)
+        and real positions are 0.0. Returns None if all positions are real.
+    """
+    if attention_mask is None:
+        return None
+
+    # Check if mask is all ones (no padding)
+    if attention_mask.min().item() == 1:
+        return None
+
+    # (B, T) → (B, 1, 1, T) additive mask
+    mask = (1.0 - attention_mask.astype(mx.float32)) * -1e9
+    return mask[:, None, None, :]
+
+
 def scaled_dot_product_attention(
     queries: mx.array,
     keys: mx.array,

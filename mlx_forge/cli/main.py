@@ -266,6 +266,42 @@ def build_parser() -> argparse.ArgumentParser:
         help="Quantize GGUF output (requires --format gguf)",
     )
 
+    # --- encode ---
+    encode_parser = subparsers.add_parser(
+        "encode",
+        help="Extract embeddings from an encoder model (BERT, RoBERTa, DeBERTa)",
+    )
+    encode_parser.add_argument(
+        "--model", required=True, help="HuggingFace model ID or local path"
+    )
+    encode_parser.add_argument(
+        "--texts",
+        nargs="+",
+        required=True,
+        help="Text strings to encode",
+    )
+    encode_parser.add_argument(
+        "--adapter",
+        default=None,
+        help="Path to adapter checkpoint directory",
+    )
+    encode_parser.add_argument(
+        "--pooling",
+        choices=["cls", "mean"],
+        default="cls",
+        help="Pooling strategy (default: cls)",
+    )
+    encode_parser.add_argument(
+        "--no-normalize",
+        action="store_true",
+        help="Disable L2 normalization of embeddings",
+    )
+    encode_parser.add_argument(
+        "--trust-remote-code",
+        action="store_true",
+        help="Trust remote code when loading tokenizer",
+    )
+
     # --- studio ---
     studio_parser = subparsers.add_parser(
         "studio",
@@ -358,6 +394,25 @@ def main(argv: list[str] | None = None) -> None:
         from mlx_forge.cli.export_cmd import run_export
 
         run_export(args)
+    elif args.command == "encode":
+        from mlx_forge.inference.encoder import encode
+        from mlx_forge.inference.engine import load_for_inference
+
+        model, tokenizer = load_for_inference(
+            args.model,
+            adapter_path=args.adapter,
+            trust_remote_code=args.trust_remote_code,
+        )
+        embeddings = encode(
+            model,
+            tokenizer,
+            args.texts,
+            pooling=args.pooling,
+            normalize=not args.no_normalize,
+        )
+        for i, emb in enumerate(embeddings):
+            print(f"[{i}] dim={emb.shape[0]}, norm={float((emb * emb).sum() ** 0.5):.4f}")
+            print(f"    {emb.tolist()[:5]}...")
     elif args.command == "studio":
         from mlx_forge.cli.studio_cmd import run_studio
 
