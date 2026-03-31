@@ -12,15 +12,15 @@ T5 uses RMSNorm and relative position bias (learned, bucketed logarithmically).
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional
 
 import mlx.core as mx
 import mlx.nn as nn
 
-from .._base import BaseModelArgs
-from .._base.attention import create_padding_mask, scaled_dot_product_attention
 from ...inference.cache import KVCache
+from .._base import BaseModelArgs
+from .._base.attention import create_padding_mask
 
 
 @dataclass

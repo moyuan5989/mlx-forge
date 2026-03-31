@@ -19,9 +19,9 @@ from typing import Optional
 import mlx.core as mx
 import mlx.nn as nn
 
+from ...inference.cache import KVCache
 from .._base import BaseModelArgs
 from .._base.attention import create_causal_mask, create_padding_mask, scaled_dot_product_attention
-from ...inference.cache import KVCache
 
 
 @dataclass
