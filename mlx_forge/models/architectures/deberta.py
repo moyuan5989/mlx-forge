@@ -71,7 +71,7 @@ class DeBERTaEmbeddings(nn.Module):
 class DisentangledAttention(nn.Module):
     """DeBERTa disentangled attention with content-to-position and position-to-content scores."""
 
-    def __init__(self, args: ModelArgs):
+    def __init__(self, args: ModelArgs, shared_rel_embeddings=None):
         super().__init__()
         self.n_heads = args.num_attention_heads
         self.head_dim = args.head_dim
@@ -85,10 +85,14 @@ class DisentangledAttention(nn.Module):
         self.dense = nn.Linear(dim, dim, bias=True)
         self.LayerNorm = nn.LayerNorm(dim, eps=args.layer_norm_eps)
 
-        # Relative position embeddings for disentangled attention
-        self.rel_embeddings = nn.Embedding(
-            2 * args.max_relative_positions, args.hidden_size
-        )
+        # Relative position embeddings — shared across all layers
+        if shared_rel_embeddings is not None:
+            self._shared_rel_embeddings = shared_rel_embeddings
+        else:
+            self._shared_rel_embeddings = None
+            self.rel_embeddings = nn.Embedding(
+                2 * args.max_relative_positions, args.hidden_size
+            )
 
         self.pos_att_type = args.pos_att_type.split("|")
 
@@ -128,7 +132,10 @@ class DisentangledAttention(nn.Module):
         # Relative position bias
         rel_pos = self._get_relative_positions(T)  # (T, T)
         # Use mx.take for indexing (MLX fancy indexing workaround)
-        rel_emb = self.rel_embeddings.weight  # (2*max_rel, D)
+        if self._shared_rel_embeddings is not None:
+            rel_emb = self._shared_rel_embeddings.weight
+        else:
+            rel_emb = self.rel_embeddings.weight  # (2*max_rel, D)
         # Flatten rel_pos to 1D, gather, reshape
         flat_pos = rel_pos.reshape(-1)
         pos_emb = mx.take(rel_emb, flat_pos, axis=0)  # (T*T, D)
@@ -187,9 +194,9 @@ class DeBERTaMLP(nn.Module):
 class DeBERTaLayer(nn.Module):
     """Single DeBERTa transformer layer."""
 
-    def __init__(self, args: ModelArgs):
+    def __init__(self, args: ModelArgs, shared_rel_embeddings=None):
         super().__init__()
-        self.attention = DisentangledAttention(args)
+        self.attention = DisentangledAttention(args, shared_rel_embeddings=shared_rel_embeddings)
         self.mlp = DeBERTaMLP(args)
 
     def __call__(
@@ -202,11 +209,18 @@ class DeBERTaLayer(nn.Module):
 
 
 class DeBERTaEncoder(nn.Module):
-    """Stack of DeBERTa transformer layers."""
+    """Stack of DeBERTa transformer layers with shared relative position embeddings."""
 
     def __init__(self, args: ModelArgs):
         super().__init__()
-        self.layers = [DeBERTaLayer(args) for _ in range(args.num_hidden_layers)]
+        # Shared relative position embeddings across all layers (matches HF DeBERTa)
+        self.rel_embeddings = nn.Embedding(
+            2 * args.max_relative_positions, args.hidden_size
+        )
+        self.layers = [
+            DeBERTaLayer(args, shared_rel_embeddings=self.rel_embeddings)
+            for _ in range(args.num_hidden_layers)
+        ]
 
     def __call__(
         self,
@@ -273,20 +287,8 @@ class Model(nn.Module):
             # output.dense → mlp.dense_out
             new_k = new_k.replace("output.dense", "mlp.dense_out")
             new_k = new_k.replace("output.LayerNorm", "mlp.LayerNorm")
-            # encoder.rel_embeddings → encoder.layers shared? No — DeBERTa has
-            # per-layer or shared rel_embeddings. Map to attention level.
-            # HF: deberta.encoder.rel_embeddings.weight
-            # We store on each attention layer via sanitize replication
-            # Actually, HF DeBERTa shares rel_embeddings across layers
-            # We keep it at encoder level and each attention reads from it
-            # But our model has per-attention rel_embeddings... let's handle this:
-            # For simplicity, if it's encoder.rel_embeddings, we replicate to each layer
-            if "encoder.rel_embeddings" in new_k:
-                # Replicate to all layers
-                for i in range(100):  # upper bound
-                    layer_k = f"encoder.layers.{i}.attention.rel_embeddings.weight"
-                    sanitized[layer_k] = v
-                continue
+            # HF: deberta.encoder.rel_embeddings.weight → encoder.rel_embeddings.weight
+            # Our model stores shared rel_embeddings on the encoder, matching HF structure.
 
             sanitized[new_k] = v
 

@@ -205,11 +205,15 @@ class TestDeBERTaForwardPass:
 # ──────────────────────────────────────────────────────────────────────
 
 class TestCreatePaddingMask:
-    def test_all_ones_returns_none(self):
+    def test_all_ones_returns_zero_mask(self):
         from mlx_forge.models._base.attention import create_padding_mask
         mask = mx.array([[1, 1, 1]])
         result = create_padding_mask(mask)
-        assert result is None
+        mx.eval(result)
+        # All-ones input → all-zeros additive mask (no positions masked out)
+        assert result.shape == (1, 1, 1, 3)
+        assert result[0, 0, 0, 0].item() == pytest.approx(0.0)
+        assert result[0, 0, 0, 2].item() == pytest.approx(0.0)
 
     def test_with_padding(self):
         from mlx_forge.models._base.attention import create_padding_mask
@@ -523,11 +527,12 @@ class TestIterateMLMBatches:
         from mlx_forge.data.batching import iterate_mlm_batches
 
         dataset = [
-            {"input_ids": [1, 2, 3], "labels": [-100, 5, -100]},
-            {"input_ids": [4, 5, 6, 7], "labels": [-100, 8, -100, -100]},
+            {"input_ids": [1, 2, 3], "labels": [1, 2, 3]},
+            {"input_ids": [4, 5, 6, 7], "labels": [4, 5, 6, 7]},
         ]
         config = MagicMock()
         config.training.batch_size = 2
+        config.training.mlm_probability = 0.15
         config.data.max_seq_length = 512
 
         batches = list(iterate_mlm_batches(dataset, config))
@@ -542,10 +547,11 @@ class TestIterateMLMBatches:
         from mlx_forge.data.batching import iterate_mlm_batches
 
         dataset = [
-            {"input_ids": [1, 2, 3], "labels": [-100, 5, -100]},
+            {"input_ids": [1, 2, 3], "labels": [1, 2, 3]},
         ]
         config = MagicMock()
         config.training.batch_size = 1
+        config.training.mlm_probability = 0.15
         config.data.max_seq_length = 512
 
         for input_ids, labels, attention_mask in iterate_mlm_batches(dataset, config):
@@ -559,11 +565,12 @@ class TestIterateMLMBatches:
         from mlx_forge.data.batching import iterate_mlm_batches
 
         dataset = [
-            {"input_ids": [1, 2], "labels": [-100, 5]},
-            {"input_ids": [3, 4, 5, 6], "labels": [-100, 7, -100, 8]},
+            {"input_ids": [1, 2], "labels": [1, 2]},
+            {"input_ids": [3, 4, 5, 6], "labels": [3, 4, 5, 6]},
         ]
         config = MagicMock()
         config.training.batch_size = 2
+        config.training.mlm_probability = 0.15
         config.data.max_seq_length = 512
 
         for input_ids, labels, attention_mask in iterate_mlm_batches(dataset, config):
@@ -573,6 +580,29 @@ class TestIterateMLMBatches:
             # Shorter sample should have padding
             T = input_ids.shape[1]
             assert T >= 4  # At least as long as longest sample
+
+    def test_dynamic_masking_applied(self):
+        """Verify that iterate_mlm_batches applies dynamic masking."""
+        from mlx_forge.data.batching import iterate_mlm_batches
+
+        # 20 tokens, high masking probability to ensure some are masked
+        dataset = [
+            {"input_ids": list(range(200, 220)), "labels": list(range(200, 220))},
+        ]
+        config = MagicMock()
+        config.training.batch_size = 1
+        config.training.mlm_probability = 0.5  # 50% for reliable detection
+        config.data.max_seq_length = 512
+
+        for input_ids, labels, attention_mask in iterate_mlm_batches(dataset, config):
+            mx.eval(input_ids, labels)
+            labels_list = labels[0].tolist()
+            # Some positions should have labels != -100 (masked positions)
+            masked_count = sum(1 for l in labels_list if l != -100)
+            assert masked_count > 0, "Dynamic masking should produce some masked positions"
+            # Some positions should have labels == -100 (unmasked)
+            unmasked_count = sum(1 for l in labels_list if l == -100)
+            assert unmasked_count > 0, "Not all positions should be masked"
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -621,7 +651,7 @@ class TestMLMTrainer:
         config.data.max_seq_length = 32
 
         dataset = [
-            {"input_ids": [1, 2, 3, 4], "labels": [-100, 5, -100, 7]},
+            {"input_ids": [1, 2, 3, 4], "labels": [1, 2, 3, 4]},
         ] * 4
 
         trainer = MLMTrainer(
@@ -645,12 +675,13 @@ class TestMLMTrainer:
         config.training.grad_accumulation_steps = 1
         config.training.max_grad_norm = None
         config.training.seed = 42
+        config.training.mlm_probability = 0.15
         config.training.val_batches = 2
         config.data.max_seq_length = 32
 
         dataset = [
-            {"input_ids": [1, 2, 3, 4], "labels": [-100, 5, -100, 7]},
-            {"input_ids": [10, 11, 12], "labels": [13, -100, 14]},
+            {"input_ids": [1, 2, 3, 4], "labels": [1, 2, 3, 4]},
+            {"input_ids": [10, 11, 12], "labels": [10, 11, 12]},
         ] * 4
 
         trainer = MLMTrainer(
@@ -681,12 +712,13 @@ class TestMLMTrainer:
         config.training.steps_per_report = 5
         config.training.steps_per_eval = 100
         config.training.steps_per_save = 100
+        config.training.mlm_probability = 0.5
         config.runtime.eager = True
         config.data.max_seq_length = 32
 
         dataset = [
-            {"input_ids": [1, 2, 3, 4], "labels": [-100, 5, -100, 7]},
-            {"input_ids": [10, 11, 12], "labels": [13, -100, 14]},
+            {"input_ids": [1, 2, 3, 4], "labels": [1, 2, 3, 4]},
+            {"input_ids": [10, 11, 12], "labels": [10, 11, 12]},
         ] * 10
 
         trainer = MLMTrainer(

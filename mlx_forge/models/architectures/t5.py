@@ -106,12 +106,14 @@ class T5Attention(nn.Module):
     First layer computes bias; subsequent layers reuse it.
     """
 
-    def __init__(self, args: ModelArgs, has_relative_bias: bool = False, is_cross: bool = False):
+    def __init__(self, args: ModelArgs, has_relative_bias: bool = False,
+                 is_cross: bool = False, is_decoder: bool = False):
         super().__init__()
         self.n_heads = args.num_heads
         self.d_kv = args.d_kv
         self.scale = self.d_kv**-0.5
         self.is_cross = is_cross
+        self.is_decoder = is_decoder
 
         inner_dim = args.num_heads * args.d_kv
         self.q_proj = nn.Linear(args.d_model, inner_dim, bias=False)
@@ -179,7 +181,8 @@ class T5Attention(nn.Module):
 
         # Add position bias
         if self.has_relative_bias and position_bias is None:
-            bidirectional = not (not is_cross and cache is not None)
+            # Encoder: bidirectional. Decoder self-attn: unidirectional.
+            bidirectional = not self.is_decoder
             position_bias = self._compute_bias(T_q, T_k, bidirectional=bidirectional)
 
         if position_bias is not None:
@@ -256,8 +259,8 @@ class T5DecoderLayer(nn.Module):
 
     def __init__(self, args: ModelArgs, has_relative_bias: bool = False):
         super().__init__()
-        self.self_attn = T5Attention(args, has_relative_bias=has_relative_bias)
-        self.cross_attn = T5Attention(args, has_relative_bias=False, is_cross=True)
+        self.self_attn = T5Attention(args, has_relative_bias=has_relative_bias, is_decoder=True)
+        self.cross_attn = T5Attention(args, has_relative_bias=False, is_cross=True, is_decoder=True)
         self.norm1 = T5RMSNorm(args.d_model)
         self.norm2 = T5RMSNorm(args.d_model)
         self.mlp = T5MLP(args)
@@ -477,12 +480,6 @@ class Model(nn.Module):
             new_k = new_k.replace(".cross_attn.k.", ".cross_attn.k_proj.")
             new_k = new_k.replace(".cross_attn.v.", ".cross_attn.v_proj.")
             new_k = new_k.replace(".cross_attn.o.", ".cross_attn.o_proj.")
-
-            # Relative attention bias
-            new_k = new_k.replace(
-                ".self_attn.relative_attention_bias.",
-                ".self_attn.relative_attention_bias."
-            )
 
             # Final layer norm
             new_k = new_k.replace("encoder.final_layer_norm.", "encoder.final_norm.")

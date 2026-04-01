@@ -6,7 +6,7 @@ from __future__ import annotations
 class TestVersionBump:
     def test_version_py(self):
         from mlx_forge._version import __version__
-        assert __version__ == "0.6.3"
+        assert __version__ == "0.7.0"
 
     def test_pyproject_version(self):
         import sys
@@ -23,7 +23,7 @@ class TestVersionBump:
         pyproject = Path(__file__).parent.parent / "pyproject.toml"
         with open(pyproject, "rb") as f:
             data = tomllib.load(f)
-        assert data["project"]["version"] == "0.6.3"
+        assert data["project"]["version"] == "0.7.0"
 
 
 class TestContributing:

@@ -236,12 +236,20 @@ def _build_batch(batch_samples, batch_size, max_seq_length):
 def iterate_mlm_batches(dataset, config):
     """Yield (input_ids, labels, attention_mask) tuples for MLM training.
 
+    Applies dynamic MLM masking: each epoch, different tokens are masked.
+    Input dataset should contain {"input_ids": [...], "labels": [...]} where
+    labels may be identical to input_ids (from _tokenize_text) — masking is
+    applied here at batch time.
+
     input_ids:       mx.array, dtype=int32, shape=(B, T)
     labels:          mx.array, dtype=int32, shape=(B, T)
     attention_mask:  mx.array, dtype=int32, shape=(B, T) — 1 for real, 0 for padding
     """
+    import random
+
     batch_size = config.training.batch_size
     max_seq_length = config.data.max_seq_length
+    mlm_probability = getattr(config.training, 'mlm_probability', 0.15)
 
     sorted_samples = sorted(
         dataset,
@@ -250,6 +258,8 @@ def iterate_mlm_batches(dataset, config):
     )
 
     pad_token_id = 0  # Default padding
+    mask_token_id = 103  # BERT [MASK] default; overridden if available
+    vocab_size = 30522
 
     for batch_start in range(0, len(sorted_samples), batch_size):
         batch_samples = sorted_samples[batch_start : batch_start + batch_size]
@@ -264,13 +274,32 @@ def iterate_mlm_batches(dataset, config):
 
         for i, sample in enumerate(batch_samples):
             input_ids = _to_list(sample["input_ids"])
-            labels = _to_list(sample["labels"])
 
             if len(input_ids) > max_seq_length:
                 input_ids = input_ids[:max_seq_length]
-                labels = labels[:max_seq_length]
 
-            batch_input_ids[i, :len(input_ids)] = input_ids
+            # Apply dynamic MLM masking
+            masked_ids = list(input_ids)
+            labels = [-100] * len(input_ids)
+
+            # Special token IDs to skip (0=pad, first/last tokens are typically CLS/SEP)
+            special_positions = {0, len(input_ids) - 1} if len(input_ids) > 1 else set()
+
+            for j in range(len(input_ids)):
+                if j in special_positions:
+                    continue
+                if input_ids[j] == pad_token_id:
+                    continue
+                if random.random() < mlm_probability:
+                    labels[j] = input_ids[j]
+                    r = random.random()
+                    if r < 0.8:
+                        masked_ids[j] = mask_token_id
+                    elif r < 0.9:
+                        masked_ids[j] = random.randint(0, vocab_size - 1)
+                    # else: keep original (10%)
+
+            batch_input_ids[i, :len(masked_ids)] = masked_ids
             batch_labels[i, :len(labels)] = labels
             batch_attention_mask[i, :len(input_ids)] = 1
 

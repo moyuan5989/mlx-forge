@@ -185,9 +185,11 @@ class BartEncoder(nn.Module):
 
     def __init__(self, args: ModelArgs):
         super().__init__()
+        # HF BART uses offset=2 for position embeddings (0 and 1 are reserved)
         self.embed_positions = nn.Embedding(
-            args.max_position_embeddings, args.d_model
+            args.max_position_embeddings + 2, args.d_model
         )
+        self.offset = 2
         self.layers = [BartEncoderLayer(args) for _ in range(args.encoder_layers)]
         self.layernorm_embedding = nn.LayerNorm(args.d_model)
 
@@ -197,7 +199,7 @@ class BartEncoder(nn.Module):
         attention_mask: Optional[mx.array] = None,
     ) -> mx.array:
         B, T, _ = inputs_embeds.shape
-        position_ids = mx.arange(T)
+        position_ids = mx.arange(T) + self.offset
         hidden_states = inputs_embeds + self.embed_positions(position_ids)
         hidden_states = self.layernorm_embedding(hidden_states)
 
@@ -214,9 +216,11 @@ class BartDecoder(nn.Module):
 
     def __init__(self, args: ModelArgs):
         super().__init__()
+        # HF BART uses offset=2 for position embeddings
         self.embed_positions = nn.Embedding(
-            args.max_position_embeddings, args.d_model
+            args.max_position_embeddings + 2, args.d_model
         )
+        self.offset = 2
         self.layers = [BartDecoderLayer(args) for _ in range(args.decoder_layers)]
         self.layernorm_embedding = nn.LayerNorm(args.d_model)
 
@@ -232,7 +236,7 @@ class BartDecoder(nn.Module):
         offset = 0
         if cache is not None and cache[0] is not None:
             offset = cache[0].offset
-        position_ids = mx.arange(offset, offset + T)
+        position_ids = mx.arange(offset, offset + T) + self.offset
         hidden_states = inputs_embeds + self.embed_positions(position_ids)
         hidden_states = self.layernorm_embedding(hidden_states)
 
@@ -336,8 +340,8 @@ class Model(nn.Module):
             if "encoder.embed_tokens" in new_k or "decoder.embed_tokens" in new_k:
                 continue  # shared.weight handles this
 
-            # HF BART embed_positions has an offset of 2
-            # We handle this by loading directly
+            # HF BART embed_positions has offset=2 (size max_pos+2).
+            # Our model uses the same size, so weights load directly.
 
             # attention: k_proj, v_proj, q_proj, out_proj stay the same
             # fc1, fc2 stay the same

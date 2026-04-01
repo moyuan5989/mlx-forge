@@ -78,16 +78,15 @@ def create_padding_mask(attention_mask: mx.array) -> Optional[mx.array]:
 
     Returns:
         (B, 1, 1, T) additive mask where padding positions are -1e9 (large negative)
-        and real positions are 0.0. Returns None if all positions are real.
+        and real positions are 0.0. Always returns the mask (no early-out) to
+        remain compatible with mx.compile traces.
     """
     if attention_mask is None:
         return None
 
-    # Check if mask is all ones (no padding)
-    if attention_mask.min().item() == 1:
-        return None
-
     # (B, T) → (B, 1, 1, T) additive mask
+    # Padding positions (0) become -1e9, real positions (1) become 0.0.
+    # No .item() call — safe inside mx.compile contexts.
     mask = (1.0 - attention_mask.astype(mx.float32)) * -1e9
     return mask[:, None, None, :]
 
