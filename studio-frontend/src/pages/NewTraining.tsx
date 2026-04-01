@@ -1,10 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
-  MessageSquare,
-  ClipboardCheck,
-  Pen,
-  ThumbsUp,
   ChevronRight,
   ChevronLeft,
   Play,
@@ -12,20 +8,47 @@ import {
   AlertTriangle,
 } from 'lucide-react'
 import { cn, formatMemory } from '../lib/utils'
-import { useRecipes, useResolveRecipe } from '../hooks/useRecipes'
 import { useCompatibleModels, useMemoryEstimate, useHardware } from '../hooks/useMemory'
 import { useSubmitJob } from '../hooks/useQueue'
 import { useDownloadedDatasets } from '../hooks/useDatasets'
 import MemoryBar from '../components/shared/MemoryBar'
-import type { Recipe, CompatibleModel, MemoryEstimateResult, DownloadedDataset } from '../api/types'
+import type { CompatibleModel, MemoryEstimateResult, DownloadedDataset } from '../api/types'
 
-const STEPS = ['Task', 'Model', 'Data', 'Config', 'Review'] as const
+const STEPS = ['Model', 'Data', 'Config', 'Review'] as const
 
-const recipeIcons: Record<string, typeof MessageSquare> = {
-  MessageSquare,
-  ClipboardCheck,
-  Pen,
-  ThumbsUp,
+const TRAINING_TYPES = [
+  { value: 'sft', label: 'SFT', description: 'Supervised fine-tuning on chat, instruction, or text data' },
+  { value: 'dpo', label: 'DPO', description: 'Direct Preference Optimization with chosen/rejected pairs' },
+  { value: 'mlm', label: 'MLM', description: 'Masked Language Modeling for encoder models (BERT, RoBERTa)' },
+  { value: 'seq2seq', label: 'Seq2Seq', description: 'Sequence-to-sequence for encoder-decoder models (T5, BART)' },
+  { value: 'grpo', label: 'GRPO', description: 'Group Relative Policy Optimization with reward functions' },
+  { value: 'orpo', label: 'ORPO', description: 'Odds Ratio Preference Optimization' },
+  { value: 'kto', label: 'KTO', description: 'Kahneman-Tversky Optimization with binary feedback' },
+  { value: 'simpo', label: 'SimPO', description: 'Simple Preference Optimization (reference-free)' },
+] as const
+
+type TrainingType = typeof TRAINING_TYPES[number]['value']
+
+const DATA_FORMAT_HINTS: Record<TrainingType, string> = {
+  sft: 'JSONL with "messages" (chat), "prompt"+"completion", or "text" field',
+  dpo: 'JSONL with "chosen" and "rejected" fields (arrays of messages)',
+  mlm: 'JSONL with "text" field — masking is applied automatically during training',
+  seq2seq: 'JSONL with "input" and "target" fields',
+  grpo: 'JSONL with "messages" field (chat format)',
+  orpo: 'JSONL with "chosen" and "rejected" fields (arrays of messages)',
+  kto: 'JSONL with "text" and "label" (0 or 1) fields',
+  simpo: 'JSONL with "chosen" and "rejected" fields (arrays of messages)',
+}
+
+const DEFAULT_CONFIGS: Record<TrainingType, Record<string, unknown>> = {
+  sft: { learning_rate: 2e-5, batch_size: 4, num_iters: 1000 },
+  dpo: { learning_rate: 5e-6, batch_size: 2, num_iters: 500, dpo_beta: 0.1 },
+  mlm: { learning_rate: 5e-5, batch_size: 8, num_iters: 1000, mlm_probability: 0.15 },
+  seq2seq: { learning_rate: 3e-5, batch_size: 4, num_iters: 1000 },
+  grpo: { learning_rate: 1e-5, batch_size: 2, num_iters: 500 },
+  orpo: { learning_rate: 5e-6, batch_size: 2, num_iters: 500 },
+  kto: { learning_rate: 5e-6, batch_size: 4, num_iters: 500 },
+  simpo: { learning_rate: 5e-6, batch_size: 2, num_iters: 500 },
 }
 
 export default function NewTraining() {
@@ -34,17 +57,8 @@ export default function NewTraining() {
   const [currentStep, setCurrentStep] = useState(0)
 
   // Wizard state
-  const [selectedRecipe, setSelectedRecipe] = useState<Recipe | null>(null)
   const [selectedModel, setSelectedModel] = useState('')
-
-  // Pre-select model from ?model= query param
-  useEffect(() => {
-    const modelParam = searchParams.get('model')
-    if (modelParam && !selectedModel) {
-      setSelectedModel(modelParam)
-      setCurrentStep(1)
-    }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  const [trainingType, setTrainingType] = useState<TrainingType>('sft')
   const [dataSource, setDataSource] = useState<'downloaded' | 'custom'>('downloaded')
   const [selectedDataset, setSelectedDataset] = useState<string>('')
   const [trainPath, setTrainPath] = useState('')
@@ -52,17 +66,24 @@ export default function NewTraining() {
   const [advancedMode, setAdvancedMode] = useState(false)
   const [configOverrides, setConfigOverrides] = useState<Record<string, unknown>>({})
 
+  // Pre-select model from ?model= query param
+  useEffect(() => {
+    const modelParam = searchParams.get('model')
+    if (modelParam && !selectedModel) {
+      setSelectedModel(modelParam)
+    }
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
   // Data
-  const { data: recipes } = useRecipes()
   const { data: models } = useCompatibleModels()
   const { data: hardware } = useHardware()
   const { data: downloadedDatasets } = useDownloadedDatasets()
   const memEstimate = useMemoryEstimate()
   const submitJob = useSubmitJob()
-  const resolveRecipe = useResolveRecipe()
 
   // Re-estimate memory when model or config changes
-  const memBatchSize = (configOverrides['batch_size'] as number) || 4
+  const defaults = DEFAULT_CONFIGS[trainingType]
+  const memBatchSize = (configOverrides['batch_size'] as number) || (defaults.batch_size as number) || 4
   const memGradCkpt = (configOverrides['gradient_checkpointing'] as boolean) || false
   const memQuantBits = configOverrides['quantization_bits'] as number | undefined
 
@@ -81,17 +102,15 @@ export default function NewTraining() {
 
   const canNext = () => {
     switch (currentStep) {
-      case 0: return selectedRecipe != null
-      case 1: return selectedModel !== ''
-      case 2: return dataSource === 'downloaded' ? selectedDataset !== '' : trainPath !== '' && validPath !== ''
+      case 0: return selectedModel !== ''
+      case 1: return dataSource === 'downloaded' ? selectedDataset !== '' : trainPath !== '' && validPath !== ''
+      case 2: return true
       case 3: return true
-      case 4: return true
       default: return false
     }
   }
 
-  const resolveConfig = async () => {
-    if (!selectedRecipe) return null
+  const buildConfig = (): Record<string, unknown> => {
     let resolvedTrainPath = trainPath
     let resolvedValidPath = validPath
     if (dataSource === 'downloaded' && selectedDataset) {
@@ -101,21 +120,33 @@ export default function NewTraining() {
         resolvedValidPath = ds.path
       }
     }
-    return resolveRecipe.mutateAsync({
-      recipeId: selectedRecipe.id,
-      body: {
-        model_id: selectedModel,
-        train_path: resolvedTrainPath,
-        valid_path: resolvedValidPath,
-        overrides: configOverrides,
+
+    return {
+      schema_version: 1,
+      model: { path: selectedModel },
+      adapter: {
+        method: 'lora',
+        preset: 'attention-qv',
+        rank: 16,
+        scale: 20.0,
+        ...(memQuantBits ? {} : {}),
       },
-    })
+      data: {
+        train: resolvedTrainPath,
+        valid: resolvedValidPath,
+        max_seq_length: 2048,
+      },
+      training: {
+        training_type: trainingType,
+        ...defaults,
+        ...configOverrides,
+      },
+    }
   }
 
   const handleSubmit = async () => {
     try {
-      const config = await resolveConfig()
-      if (!config) return
+      const config = buildConfig()
       await submitJob.mutateAsync(config)
       navigate('/experiments')
     } catch {
@@ -123,20 +154,15 @@ export default function NewTraining() {
     }
   }
 
-  const handleExportConfig = async () => {
-    try {
-      const config = await resolveConfig()
-      if (!config) return
-      const blob = new Blob([JSON.stringify(config, null, 2)], { type: 'application/json' })
-      const url = URL.createObjectURL(blob)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = 'mlxforge-config.json'
-      a.click()
-      URL.revokeObjectURL(url)
-    } catch {
-      // Error handled by mutation state
-    }
+  const handleExportConfig = () => {
+    const config = buildConfig()
+    const blob = new Blob([JSON.stringify(config, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'mlxforge-config.json'
+    a.click()
+    URL.revokeObjectURL(url)
   }
 
   return (
@@ -184,13 +210,6 @@ export default function NewTraining() {
       {/* Step content */}
       <div className="rounded-lg border border-subtle bg-surface-overlay p-6 min-h-[400px]">
         {currentStep === 0 && (
-          <StepTask
-            recipes={recipes || []}
-            selected={selectedRecipe}
-            onSelect={setSelectedRecipe}
-          />
-        )}
-        {currentStep === 1 && (
           <StepModel
             models={models || []}
             selected={selectedModel}
@@ -199,7 +218,7 @@ export default function NewTraining() {
             hardware={hardware || null}
           />
         )}
-        {currentStep === 2 && (
+        {currentStep === 1 && (
           <StepData
             dataSource={dataSource}
             onDataSourceChange={setDataSource}
@@ -210,12 +229,14 @@ export default function NewTraining() {
             validPath={validPath}
             onTrainChange={setTrainPath}
             onValidChange={setValidPath}
-            recipe={selectedRecipe}
+            trainingType={trainingType}
           />
         )}
-        {currentStep === 3 && (
+        {currentStep === 2 && (
           <StepConfig
-            recipe={selectedRecipe}
+            trainingType={trainingType}
+            onTrainingTypeChange={setTrainingType}
+            defaults={defaults}
             advanced={advancedMode}
             onAdvancedToggle={setAdvancedMode}
             overrides={configOverrides}
@@ -223,17 +244,9 @@ export default function NewTraining() {
             memoryEstimate={memEstimate.data || null}
           />
         )}
-        {currentStep === 4 && (
+        {currentStep === 3 && (
           <StepReview
-            recipe={selectedRecipe}
-            model={selectedModel}
-            trainPath={dataSource === 'downloaded' && selectedDataset
-              ? downloadedDatasets?.find((d) => d.id === selectedDataset)?.path || selectedDataset
-              : trainPath}
-            validPath={dataSource === 'downloaded' && selectedDataset
-              ? downloadedDatasets?.find((d) => d.id === selectedDataset)?.path || selectedDataset
-              : validPath}
-            overrides={configOverrides}
+            config={buildConfig()}
             memoryEstimate={memEstimate.data || null}
             hardware={hardware || null}
           />
@@ -254,8 +267,7 @@ export default function NewTraining() {
             <>
               <button
                 onClick={handleExportConfig}
-                disabled={resolveRecipe.isPending}
-                className="flex items-center gap-1 rounded-md border border-default px-4 py-2 text-sm text-label hover:bg-surface-hover disabled:opacity-50"
+                className="flex items-center gap-1 rounded-md border border-default px-4 py-2 text-sm text-label hover:bg-surface-hover"
               >
                 <Download className="h-4 w-4" /> Export Config
               </button>
@@ -290,58 +302,7 @@ export default function NewTraining() {
   )
 }
 
-// Step 1: Choose Task
-function StepTask({ recipes, selected, onSelect }: {
-  recipes: Recipe[]
-  selected: Recipe | null
-  onSelect: (r: Recipe) => void
-}) {
-  return (
-    <div className="space-y-4">
-      <div>
-        <h3 className="text-lg font-semibold text-heading">What do you want to train?</h3>
-        <p className="text-sm text-caption">Choose a recipe to get started with optimized defaults.</p>
-      </div>
-
-      <div className="grid grid-cols-2 gap-3">
-        {recipes.map((recipe) => {
-          const Icon = recipeIcons[recipe.icon] || MessageSquare
-          const isSelected = selected?.id === recipe.id
-          return (
-            <button
-              key={recipe.id}
-              onClick={() => onSelect(recipe)}
-              className={cn(
-                'text-left rounded-lg border p-4 transition-all',
-                isSelected
-                  ? 'border-indigo-500 bg-indigo-500/10'
-                  : 'border-subtle bg-surface-card hover:border-default'
-              )}
-            >
-              <div className="flex items-center gap-2 mb-2">
-                <Icon className={cn('h-5 w-5', isSelected ? 'text-indigo-400' : 'text-caption')} />
-                <span className={cn('font-medium', isSelected ? 'text-indigo-300' : 'text-label')}>
-                  {recipe.name}
-                </span>
-              </div>
-              <p className="text-xs text-caption leading-relaxed">{recipe.description}</p>
-              <span className={cn(
-                'inline-block mt-2 px-2 py-0.5 text-[10px] font-medium rounded-full uppercase tracking-wide',
-                recipe.category === 'dpo'
-                  ? 'bg-purple-500/20 text-purple-400'
-                  : 'bg-blue-500/20 text-blue-400'
-              )}>
-                {recipe.training_type}
-              </span>
-            </button>
-          )
-        })}
-      </div>
-    </div>
-  )
-}
-
-// Step 2: Select Model
+// Step 1: Select Model
 function StepModel({ models, selected, onSelect, memoryEstimate, hardware }: {
   models: CompatibleModel[]
   selected: string
@@ -350,7 +311,6 @@ function StepModel({ models, selected, onSelect, memoryEstimate, hardware }: {
   hardware: { total_memory_gb: number; training_budget_gb: number; chip_name: string } | null
 }) {
   const sortedModels = [...models].sort((a, b) => {
-    // Downloaded models first
     if (a.downloaded !== b.downloaded) return a.downloaded ? -1 : 1
     return a.num_params_b - b.num_params_b
   })
@@ -435,8 +395,8 @@ function StepModel({ models, selected, onSelect, memoryEstimate, hardware }: {
   )
 }
 
-// Step 3: Prepare Data
-function StepData({ dataSource, onDataSourceChange, downloadedDatasets, selectedDataset, onDatasetSelect, trainPath, validPath, onTrainChange, onValidChange, recipe }: {
+// Step 2: Prepare Data
+function StepData({ dataSource, onDataSourceChange, downloadedDatasets, selectedDataset, onDatasetSelect, trainPath, validPath, onTrainChange, onValidChange, trainingType }: {
   dataSource: 'downloaded' | 'custom'
   onDataSourceChange: (s: 'downloaded' | 'custom') => void
   downloadedDatasets: DownloadedDataset[]
@@ -446,7 +406,7 @@ function StepData({ dataSource, onDataSourceChange, downloadedDatasets, selected
   validPath: string
   onTrainChange: (p: string) => void
   onValidChange: (p: string) => void
-  recipe: Recipe | null
+  trainingType: TrainingType
 }) {
   const navigate = useNavigate()
 
@@ -456,7 +416,6 @@ function StepData({ dataSource, onDataSourceChange, downloadedDatasets, selected
         <h3 className="text-lg font-semibold text-heading">Prepare Data</h3>
         <p className="text-sm text-caption">
           Select a downloaded dataset or provide custom file paths.
-          {recipe && ` Expected format: ${recipe.data_format}`}
         </p>
       </div>
 
@@ -559,32 +518,27 @@ function StepData({ dataSource, onDataSourceChange, downloadedDatasets, selected
         </div>
       )}
 
-      {recipe && (
-        <div className="rounded-md bg-surface-card border border-default/50 p-3">
-          <p className="text-xs text-body">
-            <strong className="text-label">Expected format:</strong>{' '}
-            {recipe.data_format === 'chat' && 'JSONL with "messages" field (array of {role, content})'}
-            {recipe.data_format === 'completions' && 'JSONL with "prompt" and "completion" fields'}
-            {recipe.data_format === 'text' && 'JSONL with "text" field'}
-            {recipe.data_format === 'preference' && 'JSONL with "chosen" and "rejected" fields (arrays of messages)'}
-          </p>
-        </div>
-      )}
+      <div className="rounded-md bg-surface-card border border-default/50 p-3">
+        <p className="text-xs text-body">
+          <strong className="text-label">Expected format:</strong>{' '}
+          {DATA_FORMAT_HINTS[trainingType]}
+        </p>
+      </div>
     </div>
   )
 }
 
-// Step 4: Configure
-function StepConfig({ recipe, advanced, onAdvancedToggle, overrides, onOverridesChange, memoryEstimate }: {
-  recipe: Recipe | null
+// Step 3: Configure
+function StepConfig({ trainingType, onTrainingTypeChange, defaults, advanced, onAdvancedToggle, overrides, onOverridesChange, memoryEstimate }: {
+  trainingType: TrainingType
+  onTrainingTypeChange: (t: TrainingType) => void
+  defaults: Record<string, unknown>
   advanced: boolean
   onAdvancedToggle: (v: boolean) => void
   overrides: Record<string, unknown>
   onOverridesChange: (o: Record<string, unknown>) => void
   memoryEstimate: MemoryEstimateResult | null
 }) {
-  const template = recipe?.config_template?.training as Record<string, unknown> | undefined
-
   const update = (key: string, value: unknown) => {
     onOverridesChange({ ...overrides, [key]: value })
   }
@@ -594,7 +548,7 @@ function StepConfig({ recipe, advanced, onAdvancedToggle, overrides, onOverrides
       <div className="flex items-center justify-between">
         <div>
           <h3 className="text-lg font-semibold text-heading">Configure Training</h3>
-          <p className="text-sm text-caption">Adjust settings or use recipe defaults.</p>
+          <p className="text-sm text-caption">Choose training method and adjust hyperparameters.</p>
         </div>
         <label className="flex items-center gap-2 text-sm text-body cursor-pointer">
           <input
@@ -607,18 +561,47 @@ function StepConfig({ recipe, advanced, onAdvancedToggle, overrides, onOverrides
         </label>
       </div>
 
-      {/* Simple mode: key sliders */}
+      {/* Training type selector */}
+      <div>
+        <label className="block text-xs font-medium text-body mb-2">Training Type</label>
+        <div className="grid grid-cols-4 gap-2">
+          {TRAINING_TYPES.filter(t =>
+            advanced || ['sft', 'dpo', 'mlm', 'seq2seq'].includes(t.value)
+          ).map((t) => (
+            <button
+              key={t.value}
+              onClick={() => onTrainingTypeChange(t.value)}
+              className={cn(
+                'text-left rounded-md border px-3 py-2 transition-all',
+                trainingType === t.value
+                  ? 'border-indigo-500 bg-indigo-500/10'
+                  : 'border-subtle bg-surface-card hover:border-default'
+              )}
+            >
+              <span className={cn(
+                'text-xs font-semibold',
+                trainingType === t.value ? 'text-indigo-400' : 'text-label'
+              )}>
+                {t.label}
+              </span>
+              <p className="text-[10px] text-caption mt-0.5 leading-tight">{t.description}</p>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Hyperparameter sliders */}
       <div className="space-y-3">
         <div>
           <label className="block text-xs font-medium text-body mb-1">
-            Learning Rate: {(overrides['learning_rate'] as number ?? template?.learning_rate ?? 2e-5).toExponential(0)}
+            Learning Rate: {(overrides['learning_rate'] as number ?? defaults.learning_rate ?? 2e-5).toExponential(0)}
           </label>
           <input
             type="range"
             min={-7}
             max={-3}
             step={1}
-            value={Math.log10((overrides['learning_rate'] as number) || (template?.learning_rate as number) || 2e-5)}
+            value={Math.log10((overrides['learning_rate'] as number) || (defaults.learning_rate as number) || 2e-5)}
             onChange={(e) => update('learning_rate', Math.pow(10, Number(e.target.value)))}
             className="w-full"
           />
@@ -626,14 +609,14 @@ function StepConfig({ recipe, advanced, onAdvancedToggle, overrides, onOverrides
 
         <div>
           <label className="block text-xs font-medium text-body mb-1">
-            Training Steps: {(overrides['num_iters'] as number) || (template?.num_iters as number) || 1000}
+            Training Steps: {(overrides['num_iters'] as number) || (defaults.num_iters as number) || 1000}
           </label>
           <input
             type="range"
             min={100}
             max={5000}
             step={100}
-            value={(overrides['num_iters'] as number) || (template?.num_iters as number) || 1000}
+            value={(overrides['num_iters'] as number) || (defaults.num_iters as number) || 1000}
             onChange={(e) => update('num_iters', Number(e.target.value))}
             className="w-full"
           />
@@ -641,14 +624,14 @@ function StepConfig({ recipe, advanced, onAdvancedToggle, overrides, onOverrides
 
         <div>
           <label className="block text-xs font-medium text-body mb-1">
-            Batch Size: {(overrides['batch_size'] as number) || (template?.batch_size as number) || 4}
+            Batch Size: {(overrides['batch_size'] as number) || (defaults.batch_size as number) || 4}
           </label>
           <input
             type="range"
             min={1}
             max={32}
             step={1}
-            value={(overrides['batch_size'] as number) || (template?.batch_size as number) || 4}
+            value={(overrides['batch_size'] as number) || (defaults.batch_size as number) || 4}
             onChange={(e) => update('batch_size', Number(e.target.value))}
             className="w-full"
           />
@@ -662,7 +645,7 @@ function StepConfig({ recipe, advanced, onAdvancedToggle, overrides, onOverrides
             <div>
               <label className="block text-xs font-medium text-body mb-1">Optimizer</label>
               <select
-                value={(overrides['optimizer'] as string) || (template?.optimizer as string) || 'adam'}
+                value={(overrides['optimizer'] as string) || 'adam'}
                 onChange={(e) => update('optimizer', e.target.value)}
                 className="w-full rounded-md border border-default bg-surface-input px-3 py-2 text-sm text-label"
               >
@@ -675,11 +658,41 @@ function StepConfig({ recipe, advanced, onAdvancedToggle, overrides, onOverrides
               <label className="block text-xs font-medium text-body mb-1">Max Grad Norm</label>
               <input
                 type="number"
-                value={(overrides['max_grad_norm'] as number) ?? (template?.max_grad_norm as number) ?? 1.0}
+                value={(overrides['max_grad_norm'] as number) ?? 1.0}
                 onChange={(e) => update('max_grad_norm', Number(e.target.value))}
                 className="w-full rounded-md border border-default bg-surface-input px-3 py-2 text-sm text-label"
                 step={0.1}
               />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-body mb-1">LoRA Rank</label>
+              <select
+                value={(overrides['lora_rank'] as number) || 16}
+                onChange={(e) => update('lora_rank', Number(e.target.value))}
+                className="w-full rounded-md border border-default bg-surface-input px-3 py-2 text-sm text-label"
+              >
+                <option value={4}>4</option>
+                <option value={8}>8</option>
+                <option value={16}>16</option>
+                <option value={32}>32</option>
+                <option value={64}>64</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-body mb-1">Max Seq Length</label>
+              <select
+                value={(overrides['max_seq_length'] as number) || 2048}
+                onChange={(e) => update('max_seq_length', Number(e.target.value))}
+                className="w-full rounded-md border border-default bg-surface-input px-3 py-2 text-sm text-label"
+              >
+                <option value={512}>512</option>
+                <option value={1024}>1024</option>
+                <option value={2048}>2048</option>
+                <option value={4096}>4096</option>
+              </select>
             </div>
           </div>
 
@@ -712,45 +725,43 @@ function StepConfig({ recipe, advanced, onAdvancedToggle, overrides, onOverrides
   )
 }
 
-// Step 5: Review
-function StepReview({ recipe, model, trainPath, validPath, overrides, memoryEstimate, hardware }: {
-  recipe: Recipe | null
-  model: string
-  trainPath: string
-  validPath: string
-  overrides: Record<string, unknown>
+// Step 4: Review
+function StepReview({ config, memoryEstimate, hardware }: {
+  config: Record<string, unknown>
   memoryEstimate: MemoryEstimateResult | null
   hardware: { total_memory_gb: number; training_budget_gb: number; chip_name: string } | null
 }) {
+  const model = config.model as Record<string, unknown>
+  const data = config.data as Record<string, unknown>
+  const training = config.training as Record<string, unknown>
+
   return (
     <div className="space-y-4">
       <h3 className="text-lg font-semibold text-heading">Review & Start</h3>
 
       <div className="rounded-md border border-subtle divide-y divide-subtle">
         <div className="flex items-center justify-between px-4 py-3">
-          <span className="text-sm text-caption">Recipe</span>
-          <span className="text-sm text-label">{recipe?.name || '-'}</span>
-        </div>
-        <div className="flex items-center justify-between px-4 py-3">
           <span className="text-sm text-caption">Model</span>
-          <span className="text-sm font-mono text-label">{model || '-'}</span>
-        </div>
-        <div className="flex items-center justify-between px-4 py-3">
-          <span className="text-sm text-caption">Training Data</span>
-          <span className="text-sm font-mono text-body">{trainPath || '-'}</span>
-        </div>
-        <div className="flex items-center justify-between px-4 py-3">
-          <span className="text-sm text-caption">Validation Data</span>
-          <span className="text-sm font-mono text-body">{validPath || '-'}</span>
+          <span className="text-sm font-mono text-label">{(model?.path as string) || '-'}</span>
         </div>
         <div className="flex items-center justify-between px-4 py-3">
           <span className="text-sm text-caption">Training Type</span>
-          <span className="text-sm text-label uppercase">{recipe?.training_type || 'SFT'}</span>
+          <span className="text-sm text-label uppercase">{(training?.training_type as string) || 'sft'}</span>
         </div>
-        {Object.entries(overrides).map(([key, value]) => (
+        <div className="flex items-center justify-between px-4 py-3">
+          <span className="text-sm text-caption">Training Data</span>
+          <span className="text-sm font-mono text-body truncate max-w-[300px]">{(data?.train as string) || '-'}</span>
+        </div>
+        <div className="flex items-center justify-between px-4 py-3">
+          <span className="text-sm text-caption">Validation Data</span>
+          <span className="text-sm font-mono text-body truncate max-w-[300px]">{(data?.valid as string) || '-'}</span>
+        </div>
+        {Object.entries(training || {}).filter(([k]) => k !== 'training_type').map(([key, value]) => (
           <div key={key} className="flex items-center justify-between px-4 py-3">
             <span className="text-sm text-caption">{key}</span>
-            <span className="text-sm font-mono text-label">{String(value)}</span>
+            <span className="text-sm font-mono text-label">
+              {typeof value === 'number' ? (value < 0.01 ? value.toExponential(0) : String(value)) : String(value)}
+            </span>
           </div>
         ))}
       </div>
