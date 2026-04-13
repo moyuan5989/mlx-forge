@@ -357,6 +357,89 @@ def auto_configure(
     return overrides
 
 
+@dataclass
+class InferenceMemoryEstimate:
+    """Memory breakdown for inference (not training)."""
+
+    model_weights_gb: float
+    kv_cache_gb: float  # for given context_length
+    overhead_gb: float = 0.3
+    total_gb: float = 0.0
+    fits: bool = True
+    budget_gb: float = 0.0
+    max_context_that_fits: int = 0
+
+    def __post_init__(self):
+        self.total_gb = self.model_weights_gb + self.kv_cache_gb + self.overhead_gb
+
+
+def estimate_inference_memory(
+    model_id: str,
+    *,
+    context_length: int = 4096,
+    quantization_bits: Optional[int] = None,
+    hardware: Optional[HardwareProfile] = None,
+) -> InferenceMemoryEstimate:
+    """Estimate inference memory and compute max safe context length.
+
+    KV cache memory per layer per token:
+        2 (K+V) * n_kv_heads * head_dim * 2 bytes (fp16)
+
+    Args:
+        model_id: HuggingFace model ID (must be in MODEL_PROFILES).
+        context_length: Desired context window size.
+        quantization_bits: None for fp16, 4 for 4-bit, 8 for 8-bit.
+        hardware: Hardware profile (auto-detected if None).
+
+    Returns:
+        InferenceMemoryEstimate with breakdown and max safe context.
+    """
+    hw = hardware or HardwareProfile.detect()
+
+    profile = MODEL_PROFILES.get(model_id)
+    if profile is None:
+        profile = _estimate_profile_from_id(model_id)
+    if profile is None:
+        raise ValueError(
+            f"Unknown model '{model_id}'. Known models: {sorted(MODEL_PROFILES.keys())}"
+        )
+
+    # Model weights
+    bits_per_param = quantization_bits if quantization_bits else 16
+    model_weights_gb = (profile.num_params * 1e9 * bits_per_param / 8) / (1024**3)
+
+    # KV cache: 2 (K+V) * num_layers * n_kv_heads * head_dim * 2 bytes * context_length
+    # n_kv_heads may differ from num_heads (GQA), but we use num_heads as upper bound
+    head_dim = profile.hidden_dim // profile.num_heads
+    n_kv_heads = profile.num_heads  # conservative (GQA would be less)
+    bytes_per_token_per_layer = 2 * n_kv_heads * head_dim * 2  # K+V, fp16
+    kv_cache_bytes = bytes_per_token_per_layer * profile.num_layers * context_length
+    kv_cache_gb = kv_cache_bytes / (1024**3)
+
+    budget = hw.training_budget_gb  # ~75% of total
+
+    # Compute max context that fits
+    available_for_kv = max(0, budget - model_weights_gb - 0.3)
+    bytes_per_token_total = bytes_per_token_per_layer * profile.num_layers
+    if bytes_per_token_total > 0:
+        max_ctx = int(available_for_kv * (1024**3) / bytes_per_token_total)
+    else:
+        max_ctx = context_length
+
+    # Round down to nearest 256 for cleanliness
+    max_ctx = max(256, (max_ctx // 256) * 256)
+
+    estimate = InferenceMemoryEstimate(
+        model_weights_gb=round(model_weights_gb, 2),
+        kv_cache_gb=round(kv_cache_gb, 2),
+        budget_gb=budget,
+        max_context_that_fits=max_ctx,
+    )
+    estimate.fits = estimate.total_gb <= budget
+
+    return estimate
+
+
 def _get_system_memory() -> int:
     """Get total system memory in bytes."""
     try:

@@ -70,6 +70,9 @@ class ChatCompletionRequest(BaseModel):
     conversation_id: str | None = None
     # M41: model lifecycle
     keep_alive: str | int | None = None
+    # M42: context management
+    num_ctx: int | None = None
+    num_keep: int | None = None
 
 
 class CompletionRequest(BaseModel):

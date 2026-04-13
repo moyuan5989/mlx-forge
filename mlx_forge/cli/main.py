@@ -396,6 +396,20 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Path to aliases JSON file (default: ~/.mlxforge/aliases.json)",
     )
+    serve_parser.add_argument(
+        "--context-length",
+        type=int,
+        default=0,
+        help="Default context window size (0 = auto, default: 0). "
+        "When set, uses rotating cache to handle overflow.",
+    )
+    serve_parser.add_argument(
+        "--num-keep",
+        type=int,
+        default=0,
+        help="Tokens to always keep at start of context on overflow (default: 0). "
+        "Use to preserve system prompt tokens.",
+    )
 
     # --- alias ---
     alias_parser = subparsers.add_parser(

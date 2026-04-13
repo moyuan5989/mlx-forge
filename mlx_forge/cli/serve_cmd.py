@@ -16,6 +16,8 @@ def run_serve(args) -> None:
         max_models=getattr(args, "max_models", 1),
         keep_alive=getattr(args, "keep_alive", "5m"),
         aliases_path=getattr(args, "aliases", None),
+        context_length=getattr(args, "context_length", 0),
+        num_keep=getattr(args, "num_keep", 0),
     )
 
     print(f"Starting MLX Forge serving on {args.host}:{args.port}")

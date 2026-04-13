@@ -83,17 +83,34 @@ def load_for_inference(
     return model, tokenizer
 
 
-def _make_model_cache(model, max_size: int):
-    """Create cache for model, preferring model-level method."""
+def _get_num_layers(model) -> int:
+    """Get the number of transformer layers in a model."""
+    if hasattr(model, "model") and hasattr(model.model, "layers"):
+        return len(model.model.layers)
+    elif hasattr(model, "layers"):
+        return len(model.layers)
+    else:
+        raise ValueError("Cannot determine number of layers in model")
+
+
+def _make_model_cache(model, max_size: int, num_keep: int = 0):
+    """Create cache for model, preferring model-level method.
+
+    Args:
+        model: The model instance.
+        max_size: Maximum cache size in tokens.
+        num_keep: Tokens to preserve at start on rotation (0 = use KVCache).
+    """
     if hasattr(model, "make_cache"):
         return model.make_cache()
 
-    if hasattr(model, "model") and hasattr(model.model, "layers"):
-        num_layers = len(model.model.layers)
-    elif hasattr(model, "layers"):
-        num_layers = len(model.layers)
-    else:
-        raise ValueError("Cannot determine number of layers in model")
+    num_layers = _get_num_layers(model)
+
+    if num_keep > 0 and max_size > 0:
+        from mlx_forge.inference.rotating_cache import make_rotating_cache
+
+        return make_rotating_cache(num_layers, max_size=max_size, num_keep=num_keep)
+
     return make_cache(num_layers, max_size=max_size)
 
 
@@ -156,6 +173,8 @@ def generate_steps(
     *,
     cache: list | None = None,
     all_token_history: list[int] | None = None,
+    context_length: int = 0,
+    num_keep: int = 0,
     temperature: float = 0.7,
     top_p: float = 0.9,
     top_k: int = 0,
@@ -179,6 +198,10 @@ def generate_steps(
         cache: Optional pre-existing KV cache (for multi-turn reuse).
         all_token_history: Full token history for repetition/frequency
             penalty tracking. If None, uses prompt_tokens.
+        context_length: Fixed context window size. 0 = auto (prompt + max_tokens).
+            When set, uses RotatingKVCache if num_keep > 0.
+        num_keep: Tokens to preserve at start of context on rotation.
+            Only used when context_length > 0.
         temperature: Sampling temperature. 0.0 = greedy.
         top_p: Nucleus sampling threshold.
         top_k: Top-k filtering. 0 = disabled.
@@ -198,8 +221,11 @@ def generate_steps(
         mx.random.seed(seed)
 
     if cache is None:
-        cache_max_size = len(prompt_tokens) + max_tokens
-        cache = _make_model_cache(model, max_size=cache_max_size)
+        if context_length > 0:
+            cache_max_size = context_length
+        else:
+            cache_max_size = len(prompt_tokens) + max_tokens
+        cache = _make_model_cache(model, max_size=cache_max_size, num_keep=num_keep)
 
     # Prefill: process prompt tokens (may be delta if cache is reused)
     tokens = mx.array(prompt_tokens)[None]  # (1, T)

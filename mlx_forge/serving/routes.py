@@ -45,6 +45,8 @@ router = APIRouter()
 _manager = ModelManager()
 _cache_manager: CacheManager | None = None
 _pool: ModelPool | None = None
+_default_context_length: int = 0
+_default_num_keep: int = 0
 
 
 def get_manager() -> ModelManager:
@@ -72,6 +74,12 @@ def get_pool() -> ModelPool | None:
 def set_pool(pool: ModelPool | None) -> None:
     global _pool
     _pool = pool
+
+
+def set_context_defaults(context_length: int = 0, num_keep: int = 0) -> None:
+    global _default_context_length, _default_num_keep
+    _default_context_length = context_length
+    _default_num_keep = num_keep
 
 
 def _get_model_manager(
@@ -121,6 +129,13 @@ def _build_stop_checker(request, tokenizer) -> StopChecker:
         stop_token_ids=stop_token_ids,
         eos_token_id=tokenizer.eos_token_id,
     )
+
+
+def _get_context_params(request) -> tuple[int, int]:
+    """Get context_length and num_keep from request or server defaults."""
+    ctx = getattr(request, "num_ctx", None) or _default_context_length
+    keep = getattr(request, "num_keep", None) or _default_num_keep
+    return ctx, keep
 
 
 def _build_logprobs_response(logprobs_list):
@@ -295,6 +310,7 @@ async def chat_completions(request: ChatCompletionRequest):
     from mlx_forge.inference.engine import generate_steps
     from mlx_forge.inference.metrics import MetricsTracker
 
+    ctx_len, n_keep = _get_context_params(request)
     tracker = MetricsTracker(num_prompt_tokens=len(tokens_to_prefill))
     generated_ids = []
     generated_text = ""
@@ -308,6 +324,8 @@ async def chat_completions(request: ChatCompletionRequest):
         mgr.tokenizer,
         cache=kv_cache,
         all_token_history=all_token_history,
+        context_length=ctx_len,
+        num_keep=n_keep,
         temperature=request.temperature,
         top_p=request.top_p,
         top_k=request.top_k,
@@ -402,12 +420,15 @@ async def _stream_chat(
     buffer = []
     finish_reason = None
 
+    ctx_len, n_keep = _get_context_params(request)
     for step in generate_steps(
         mgr.model,
         tokens_to_prefill,
         mgr.tokenizer,
         cache=kv_cache,
         all_token_history=all_token_history,
+        context_length=ctx_len,
+        num_keep=n_keep,
         temperature=request.temperature,
         top_p=request.top_p,
         top_k=request.top_k,
@@ -483,6 +504,7 @@ async def completions(request: CompletionRequest):
     from mlx_forge.inference.engine import generate_steps
     from mlx_forge.inference.metrics import MetricsTracker
 
+    ctx_len, n_keep = _get_context_params(request)
     tracker = MetricsTracker(num_prompt_tokens=len(prompt_tokens))
     generated_ids = []
     generated_text = ""
@@ -494,6 +516,8 @@ async def completions(request: CompletionRequest):
         mgr.model,
         prompt_tokens,
         mgr.tokenizer,
+        context_length=ctx_len,
+        num_keep=n_keep,
         temperature=request.temperature,
         top_p=request.top_p,
         top_k=request.top_k,
@@ -562,10 +586,13 @@ async def _stream_completion(mgr, prompt_tokens, request, stop_checker):
     buffer = []
     finish_reason = None
 
+    ctx_len, n_keep = _get_context_params(request)
     for step in generate_steps(
         mgr.model,
         prompt_tokens,
         mgr.tokenizer,
+        context_length=ctx_len,
+        num_keep=n_keep,
         temperature=request.temperature,
         top_p=request.top_p,
         top_k=request.top_k,

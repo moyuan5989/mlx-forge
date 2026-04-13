@@ -12,6 +12,7 @@ from mlx_forge.serving.model_pool import ModelPool, parse_keep_alive
 from mlx_forge.serving.routes import (
     router,
     set_cache_manager,
+    set_context_defaults,
     set_manager,
     set_pool,
 )
@@ -28,6 +29,8 @@ def create_serving_app(
     max_models: int = 1,
     keep_alive: str | int | float = "5m",
     aliases_path: str | None = None,
+    context_length: int = 0,
+    num_keep: int = 0,
 ) -> FastAPI:
     """Create the OpenAI-compatible serving app.
 
@@ -63,6 +66,7 @@ def create_serving_app(
         pool.load_aliases(aliases_path)
 
     set_pool(pool)
+    set_context_defaults(context_length=context_length, num_keep=num_keep)
 
     app.include_router(router)
 
