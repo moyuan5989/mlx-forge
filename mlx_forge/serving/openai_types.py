@@ -68,6 +68,8 @@ class ChatCompletionRequest(BaseModel):
     stop_token_ids: list[int] | None = None
     # M40: multi-turn cache
     conversation_id: str | None = None
+    # M41: model lifecycle
+    keep_alive: str | int | None = None
 
 
 class CompletionRequest(BaseModel):
@@ -89,6 +91,8 @@ class CompletionRequest(BaseModel):
     # M39
     response_format: dict | None = None
     stop_token_ids: list[int] | None = None
+    # M41: model lifecycle
+    keep_alive: str | int | None = None
 
 
 # --- Logprobs response types ---

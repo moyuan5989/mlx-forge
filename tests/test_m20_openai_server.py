@@ -218,9 +218,10 @@ def app(mock_manager):
     """Create test app with mocked model."""
     from fastapi import FastAPI
 
-    from mlx_forge.serving.routes import router, set_manager
+    from mlx_forge.serving.routes import router, set_manager, set_pool
 
     set_manager(mock_manager)
+    set_pool(None)  # Use legacy single-manager path
     app = FastAPI()
     app.include_router(router)
     return app

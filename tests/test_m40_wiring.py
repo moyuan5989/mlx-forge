@@ -41,9 +41,10 @@ def app(mock_manager):
     from fastapi import FastAPI
 
     from mlx_forge.serving.cache_manager import CacheManager
-    from mlx_forge.serving.routes import router, set_cache_manager, set_manager
+    from mlx_forge.serving.routes import router, set_cache_manager, set_manager, set_pool
 
     set_manager(mock_manager)
+    set_pool(None)  # Use legacy single-manager path
     set_cache_manager(CacheManager(max_conversations=16, ttl_seconds=600))
     app = FastAPI()
     app.include_router(router)

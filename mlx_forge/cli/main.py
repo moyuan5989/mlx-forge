@@ -379,6 +379,39 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Enable vision model support (requires mlx-vlm)",
     )
+    serve_parser.add_argument(
+        "--max-models",
+        type=int,
+        default=1,
+        help="Maximum models to keep in memory (default: 1)",
+    )
+    serve_parser.add_argument(
+        "--keep-alive",
+        default="5m",
+        help="Default model keep-alive duration (default: 5m). "
+        "Supports: '5m', '1h', '30s', 300, -1 (forever), 0 (immediate unload)",
+    )
+    serve_parser.add_argument(
+        "--aliases",
+        default=None,
+        help="Path to aliases JSON file (default: ~/.mlxforge/aliases.json)",
+    )
+
+    # --- alias ---
+    alias_parser = subparsers.add_parser(
+        "alias",
+        help="Manage model aliases",
+    )
+    alias_subs = alias_parser.add_subparsers(dest="alias_command", help="Alias subcommands")
+
+    alias_set = alias_subs.add_parser("set", help="Set an alias")
+    alias_set.add_argument("name", help="Alias name")
+    alias_set.add_argument("model_id", help="Model ID the alias points to")
+
+    alias_subs.add_parser("list", help="List all aliases")
+
+    alias_rm = alias_subs.add_parser("remove", help="Remove an alias")
+    alias_rm.add_argument("name", help="Alias name to remove")
 
     # --- train (add --vision flag) ---
     train_parser.add_argument(
@@ -445,6 +478,10 @@ def main(argv: list[str] | None = None) -> None:
         from mlx_forge.cli.serve_cmd import run_serve
 
         run_serve(args)
+    elif args.command == "alias":
+        from mlx_forge.cli.alias_cmd import run_alias
+
+        run_alias(args)
     else:
         parser.print_help()
         sys.exit(1)
