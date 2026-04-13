@@ -12,16 +12,20 @@ def run_serve(args) -> None:
     app = create_serving_app(
         model=args.model,
         adapter=getattr(args, "adapter", None),
+        draft_model=getattr(args, "draft_model", None),
     )
 
     print(f"Starting MLX Forge serving on {args.host}:{args.port}")
     if args.model:
         print(f"Pre-loading model: {args.model}")
+    if getattr(args, "draft_model", None):
+        print(f"Draft model (speculative): {args.draft_model}")
     print()
     print(f"OpenAI-compatible API: http://{args.host}:{args.port}/v1")
     print("  POST /v1/chat/completions")
     print("  POST /v1/completions")
     print("  GET  /v1/models")
+    print("  GET  /health")
     print()
 
     uvicorn.run(app, host=args.host, port=args.port)

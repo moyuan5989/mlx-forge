@@ -126,6 +126,17 @@ def load_model(
     model_args = model_args_class.from_dict(config)
     model = model_class(model_args)
 
+    # Quantize model if pre-quantized weights detected (e.g., mlx-community format)
+    quant_config = config.get("quantization")
+    if quant_config and isinstance(quant_config, dict):
+        nn.quantize(
+            model,
+            bits=quant_config.get("bits", 4),
+            group_size=quant_config.get("group_size", 64),
+            class_predicate=lambda path, m: isinstance(m, nn.Linear)
+            and "lm_head" not in path,
+        )
+
     # Load weights
     weights = load_weights(model_path)
 

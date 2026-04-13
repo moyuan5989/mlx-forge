@@ -8,10 +8,41 @@ from typing import Optional
 
 from pydantic import BaseModel, Field
 
+# --- Tool/Function calling types (M39) ---
+
+
+class FunctionDef(BaseModel):
+    name: str
+    description: str = ""
+    parameters: dict = Field(default_factory=dict)
+
+
+class ToolDef(BaseModel):
+    type: str = "function"
+    function: FunctionDef
+
+
+class ToolCallFunction(BaseModel):
+    name: str
+    arguments: str  # JSON string
+
+
+class ToolCallMessage(BaseModel):
+    id: str = Field(default_factory=lambda: f"call_{uuid.uuid4().hex[:8]}")
+    type: str = "function"
+    function: ToolCallFunction
+
+
+# --- Chat messages ---
+
 
 class ChatMessage(BaseModel):
     role: str
-    content: str
+    content: str | None = None
+    tool_calls: list[ToolCallMessage] | None = None
+
+
+# --- Requests ---
 
 
 class ChatCompletionRequest(BaseModel):
@@ -23,6 +54,20 @@ class ChatCompletionRequest(BaseModel):
     stream: bool = False
     stop: Optional[list[str] | str] = None
     repetition_penalty: float = 1.0
+    # M37: new sampling params
+    top_k: int = 0
+    min_p: float = 0.0
+    frequency_penalty: float = 0.0
+    presence_penalty: float = 0.0
+    logprobs: bool = False
+    top_logprobs: int | None = None
+    # M39: structured generation
+    tools: list[ToolDef] | None = None
+    tool_choice: str | dict | None = None
+    response_format: dict | None = None
+    stop_token_ids: list[int] | None = None
+    # M40: multi-turn cache
+    conversation_id: str | None = None
 
 
 class CompletionRequest(BaseModel):
@@ -34,24 +79,64 @@ class CompletionRequest(BaseModel):
     stream: bool = False
     stop: Optional[list[str] | str] = None
     repetition_penalty: float = 1.0
+    # M37: new sampling params
+    top_k: int = 0
+    min_p: float = 0.0
+    frequency_penalty: float = 0.0
+    presence_penalty: float = 0.0
+    logprobs: bool = False
+    top_logprobs: int | None = None
+    # M39
+    response_format: dict | None = None
+    stop_token_ids: list[int] | None = None
+
+
+# --- Logprobs response types ---
+
+
+class TopLogprob(BaseModel):
+    token: str
+    token_id: int
+    logprob: float
+
+
+class LogprobContent(BaseModel):
+    token: str
+    token_id: int
+    logprob: float
+    top_logprobs: list[TopLogprob] = Field(default_factory=list)
+
+
+class ChoiceLogprobs(BaseModel):
+    content: list[LogprobContent] = Field(default_factory=list)
+
+
+# --- Responses ---
 
 
 class Choice(BaseModel):
     index: int = 0
     message: ChatMessage
     finish_reason: str
+    logprobs: ChoiceLogprobs | None = None
 
 
 class CompletionChoice(BaseModel):
     index: int = 0
     text: str
     finish_reason: str
+    logprobs: ChoiceLogprobs | None = None
 
 
 class Usage(BaseModel):
     prompt_tokens: int
     completion_tokens: int
     total_tokens: int
+    # Timing extensions (Ollama-compatible)
+    ttft_ms: float | None = None
+    prompt_eval_duration_ms: float | None = None
+    eval_duration_ms: float | None = None
+    decode_tokens_per_sec: float | None = None
 
 
 class ChatCompletionResponse(BaseModel):
@@ -75,6 +160,7 @@ class CompletionResponse(BaseModel):
 class DeltaContent(BaseModel):
     role: Optional[str] = None
     content: Optional[str] = None
+    tool_calls: list[ToolCallMessage] | None = None
 
 
 class StreamChoice(BaseModel):

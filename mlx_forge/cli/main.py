@@ -123,6 +123,30 @@ def build_parser() -> argparse.ArgumentParser:
         help="RNG seed for reproducible generation",
     )
     gen_parser.add_argument(
+        "--top-k",
+        type=int,
+        default=0,
+        help="Top-k sampling (0 = disabled, default: 0)",
+    )
+    gen_parser.add_argument(
+        "--min-p",
+        type=float,
+        default=0.0,
+        help="Min-p sampling threshold (0.0 = disabled, default: 0.0)",
+    )
+    gen_parser.add_argument(
+        "--frequency-penalty",
+        type=float,
+        default=0.0,
+        help="Frequency penalty (0.0 = disabled, default: 0.0)",
+    )
+    gen_parser.add_argument(
+        "--presence-penalty",
+        type=float,
+        default=0.0,
+        help="Presence penalty (0.0 = disabled, default: 0.0)",
+    )
+    gen_parser.add_argument(
         "--trust-remote-code",
         action="store_true",
         help="Trust remote code when loading tokenizer",

@@ -235,11 +235,17 @@ def client(app):
     return AsyncClient(transport=transport, base_url="http://test")
 
 
+def _mock_steps(*token_ids):
+    """Create mock StepResult objects for patching generate_steps."""
+    from mlx_forge.inference.engine import StepResult
+    return iter([StepResult(token_id=t) for t in token_ids])
+
+
 @pytest.mark.asyncio
 async def test_chat_completion_format(client, mock_manager):
     """Non-streaming chat completion returns correct format."""
-    with patch("mlx_forge.inference.engine.generate_tokens") as mock_gen:
-        mock_gen.return_value = iter([10, 20, 30])
+    with patch("mlx_forge.inference.engine.generate_steps") as mock_gen:
+        mock_gen.return_value = _mock_steps(10, 20, 30)
 
         resp = await client.post(
             "/v1/chat/completions",
@@ -260,8 +266,8 @@ async def test_chat_completion_format(client, mock_manager):
 @pytest.mark.asyncio
 async def test_completion_format(client, mock_manager):
     """Non-streaming completion returns correct format."""
-    with patch("mlx_forge.inference.engine.generate_tokens") as mock_gen:
-        mock_gen.return_value = iter([10, 20])
+    with patch("mlx_forge.inference.engine.generate_steps") as mock_gen:
+        mock_gen.return_value = _mock_steps(10, 20)
 
         resp = await client.post(
             "/v1/completions",
@@ -290,8 +296,8 @@ async def test_models_endpoint(client, mock_manager):
 @pytest.mark.asyncio
 async def test_chat_streaming_format(client, mock_manager):
     """Streaming chat returns SSE chunks ending with [DONE]."""
-    with patch("mlx_forge.inference.engine.generate_tokens") as mock_gen:
-        mock_gen.return_value = iter([10, 20])
+    with patch("mlx_forge.inference.engine.generate_steps") as mock_gen:
+        mock_gen.return_value = _mock_steps(10, 20)
         mock_manager._tokenizer.decode.return_value = "Hi"
 
         resp = await client.post(
@@ -325,8 +331,8 @@ async def test_chat_streaming_format(client, mock_manager):
 @pytest.mark.asyncio
 async def test_stop_sequence_handling(client, mock_manager):
     """Stop sequences should truncate output."""
-    with patch("mlx_forge.inference.engine.generate_tokens") as mock_gen:
-        mock_gen.return_value = iter([10, 20, 30, 40])
+    with patch("mlx_forge.inference.engine.generate_steps") as mock_gen:
+        mock_gen.return_value = _mock_steps(10, 20, 30, 40)
         # Simulate decode returning text containing stop sequence
         mock_manager._tokenizer.decode.side_effect = [
             "Hello",
@@ -351,8 +357,8 @@ async def test_stop_sequence_handling(client, mock_manager):
 @pytest.mark.asyncio
 async def test_usage_token_counts(client, mock_manager):
     """Usage should report correct token counts."""
-    with patch("mlx_forge.inference.engine.generate_tokens") as mock_gen:
-        mock_gen.return_value = iter([10, 20, 30])
+    with patch("mlx_forge.inference.engine.generate_steps") as mock_gen:
+        mock_gen.return_value = _mock_steps(10, 20, 30)
 
         resp = await client.post(
             "/v1/chat/completions",
@@ -370,8 +376,8 @@ async def test_usage_token_counts(client, mock_manager):
 @pytest.mark.asyncio
 async def test_completion_streaming_done(client, mock_manager):
     """Streaming completion ends with [DONE]."""
-    with patch("mlx_forge.inference.engine.generate_tokens") as mock_gen:
-        mock_gen.return_value = iter([10])
+    with patch("mlx_forge.inference.engine.generate_steps") as mock_gen:
+        mock_gen.return_value = _mock_steps(10)
         mock_manager._tokenizer.decode.return_value = "test"
 
         resp = await client.post(
