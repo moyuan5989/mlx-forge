@@ -148,10 +148,13 @@ class ModelPool:
             if not self._evict_lru():
                 break  # nothing to evict
 
-        # Load the model
+        # Load the model — resolve forge: prefix
         mgr = ModelManager()
         try:
-            mgr.load(resolved_id)
+            if resolved_id.startswith("forge:"):
+                self._load_from_forge(mgr, resolved_id[6:])
+            else:
+                mgr.load(resolved_id)
             mgr.snapshot_base_weights()
         except Exception:
             logger.exception("Failed to load model '%s'", resolved_id)
@@ -266,6 +269,26 @@ class ModelPool:
             json.dump(self._aliases, f, indent=2)
 
     # ─── Internal ───
+
+    def _load_from_forge(self, mgr: ModelManager, forge_name: str) -> None:
+        """Load a model from a forge spec."""
+        from mlx_forge.forge import get_forge
+
+        forge = get_forge(forge_name)
+        if forge is None:
+            raise FileNotFoundError(f"Forge '{forge_name}' not found")
+
+        load_args = forge.to_load_args()
+        from mlx_forge.inference.engine import load_for_inference
+
+        model, tokenizer = load_for_inference(
+            load_args["model_path"],
+            adapter_path=load_args.get("adapter_path"),
+        )
+        mgr._model = model
+        mgr._tokenizer = tokenizer
+        mgr._model_id = f"forge:{forge_name}"
+        logger.info("Loaded forge '%s' (base=%s)", forge_name, forge.base)
 
     def _evict_expired(self) -> list[str]:
         """Remove models past their keep_alive. Returns evicted IDs."""

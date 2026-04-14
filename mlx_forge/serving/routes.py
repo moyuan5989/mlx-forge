@@ -707,7 +707,34 @@ async def embeddings(request: EmbeddingRequest):
 
 
 class AdapterLoadRequest(BaseModel):
-    adapter_path: str
+    adapter_path: str | None = None
+    run_id: str | None = None
+
+
+def _resolve_adapter_path(request: AdapterLoadRequest) -> str:
+    """Resolve adapter path from request (path or run_id)."""
+    if request.run_id:
+        from pathlib import Path
+
+        runs_dir = Path("~/.mlxforge/runs").expanduser()
+        run_dir = runs_dir / request.run_id
+        if not run_dir.exists():
+            raise FileNotFoundError(f"Run '{request.run_id}' not found")
+        ckpt_dir = run_dir / "checkpoints"
+        best = ckpt_dir / "best"
+        if best.exists():
+            return str(best.resolve())
+        ckpts = sorted(
+            [d for d in ckpt_dir.iterdir() if d.is_dir() and not d.is_symlink()]
+        )
+        if ckpts:
+            return str(ckpts[-1])
+        raise FileNotFoundError(f"No checkpoints in run '{request.run_id}'")
+
+    if request.adapter_path:
+        return request.adapter_path
+
+    raise ValueError("Provide either adapter_path or run_id")
 
 
 @router.post("/v1/adapters/load")
@@ -718,9 +745,10 @@ async def load_adapter(request: AdapterLoadRequest):
         raise HTTPException(status_code=400, detail="No model loaded")
 
     try:
+        adapter_path = _resolve_adapter_path(request)
         if mgr._base_weights is None:
             mgr.snapshot_base_weights()
-        mgr.load_adapter(request.adapter_path)
+        mgr.load_adapter(adapter_path)
     except (ValueError, FileNotFoundError) as e:
         raise HTTPException(status_code=400, detail=str(e))
 

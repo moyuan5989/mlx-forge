@@ -427,6 +427,39 @@ def build_parser() -> argparse.ArgumentParser:
     alias_rm = alias_subs.add_parser("remove", help="Remove an alias")
     alias_rm.add_argument("name", help="Alias name to remove")
 
+    # --- forge ---
+    forge_parser = subparsers.add_parser(
+        "forge",
+        help="Manage model bundles (base + adapter + system prompt)",
+    )
+    forge_subs = forge_parser.add_subparsers(dest="forge_command", help="Forge subcommands")
+
+    forge_create = forge_subs.add_parser("create", help="Create a new forge")
+    forge_create.add_argument("name", help="Forge name")
+    forge_create.add_argument(
+        "--from-run", default=None, help="Create from a training run ID"
+    )
+    forge_create.add_argument(
+        "--file", "-f", default=None, help="Create from a YAML file"
+    )
+    forge_create.add_argument(
+        "--base", default=None, help="Base model (HF ID or local path)"
+    )
+    forge_create.add_argument(
+        "--adapter", default=None, help="Adapter path"
+    )
+    forge_create.add_argument(
+        "--system", default=None, help="Default system prompt"
+    )
+
+    forge_subs.add_parser("list", help="List all forges")
+
+    forge_delete = forge_subs.add_parser("delete", help="Delete a forge")
+    forge_delete.add_argument("name", help="Forge name to delete")
+
+    forge_show = forge_subs.add_parser("show", help="Show forge details")
+    forge_show.add_argument("name", help="Forge name")
+
     # --- train (add --vision flag) ---
     train_parser.add_argument(
         "--vision",
@@ -496,6 +529,10 @@ def main(argv: list[str] | None = None) -> None:
         from mlx_forge.cli.alias_cmd import run_alias
 
         run_alias(args)
+    elif args.command == "forge":
+        from mlx_forge.cli.forge_cmd import run_forge
+
+        run_forge(args)
     else:
         parser.print_help()
         sys.exit(1)
