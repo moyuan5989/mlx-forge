@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mlx-forge"
-version = "0.7.1"
+version = "0.8.0"
 description = "Fine-tune, experiment with, and run LLMs locally on your Mac"
 license = "MIT"
 readme = "README.md"
