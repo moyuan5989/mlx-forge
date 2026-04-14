@@ -307,10 +307,12 @@ async def chat_completions(request: ChatCompletionRequest):
         )
 
     # Non-streaming
+    from mlx_forge.inference.constrained import make_json_logit_processor
     from mlx_forge.inference.engine import generate_steps
     from mlx_forge.inference.metrics import MetricsTracker
 
     ctx_len, n_keep = _get_context_params(request)
+    lp = make_json_logit_processor(mgr.tokenizer, request.response_format)
     tracker = MetricsTracker(num_prompt_tokens=len(tokens_to_prefill))
     generated_ids = []
     generated_text = ""
@@ -336,6 +338,7 @@ async def chat_completions(request: ChatCompletionRequest):
         presence_penalty=request.presence_penalty,
         logprobs=request.logprobs,
         top_logprobs=request.top_logprobs or 5,
+        logit_processor=lp,
     ):
         if first_token:
             tracker.mark_prefill_done()
@@ -372,6 +375,16 @@ async def chat_completions(request: ChatCompletionRequest):
         all_tokens = list(prompt_tokens) + generated_ids
         cache_mgr.update(conv_id, kv_cache, all_tokens)
 
+    # Parse thinking blocks if requested
+    thinking_content = None
+    if getattr(request, "think", False) and generated_text:
+        from mlx_forge.inference.thinking import ThinkingParser
+
+        parsed = ThinkingParser().parse(generated_text)
+        if parsed.thinking:
+            thinking_content = parsed.thinking
+            generated_text = parsed.response
+
     tool_calls = None
     if request.tools:
         tool_calls = _parse_tool_calls_from_text(generated_text)
@@ -388,6 +401,7 @@ async def chat_completions(request: ChatCompletionRequest):
                     role="assistant",
                     content=generated_text if not tool_calls else None,
                     tool_calls=tool_calls,
+                    thinking=thinking_content,
                 ),
                 finish_reason=finish_reason,
                 logprobs=_build_logprobs_response(logprobs_list) if request.logprobs else None,
@@ -492,7 +506,19 @@ async def completions(request: CompletionRequest):
     mgr = _get_model_manager(request.model, keep_alive=keep_alive)
 
     stop_checker = _build_stop_checker(request, mgr.tokenizer)
-    prompt_tokens = mgr.tokenizer.encode(request.prompt)
+
+    # Handle fill-in-middle (suffix parameter)
+    if request.suffix:
+        from mlx_forge.inference.fim import build_fim_prompt, detect_fim_support
+
+        fim_type = detect_fim_support({"_name_or_path": request.model})
+        if fim_type:
+            prompt_text = build_fim_prompt(request.prompt, request.suffix, fim_type)
+            prompt_tokens = mgr.tokenizer.encode(prompt_text)
+        else:
+            prompt_tokens = mgr.tokenizer.encode(request.prompt)
+    else:
+        prompt_tokens = mgr.tokenizer.encode(request.prompt)
 
     if request.stream:
         return StreamingResponse(
@@ -501,10 +527,12 @@ async def completions(request: CompletionRequest):
         )
 
     # Non-streaming
+    from mlx_forge.inference.constrained import make_json_logit_processor
     from mlx_forge.inference.engine import generate_steps
     from mlx_forge.inference.metrics import MetricsTracker
 
     ctx_len, n_keep = _get_context_params(request)
+    lp = make_json_logit_processor(mgr.tokenizer, request.response_format)
     tracker = MetricsTracker(num_prompt_tokens=len(prompt_tokens))
     generated_ids = []
     generated_text = ""
@@ -528,6 +556,7 @@ async def completions(request: CompletionRequest):
         presence_penalty=request.presence_penalty,
         logprobs=request.logprobs,
         top_logprobs=request.top_logprobs or 5,
+        logit_processor=lp,
     ):
         if first_token:
             tracker.mark_prefill_done()

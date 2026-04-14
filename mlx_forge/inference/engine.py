@@ -186,6 +186,7 @@ def generate_steps(
     seed: int | None = None,
     logprobs: bool = False,
     top_logprobs: int = 5,
+    logit_processor: object | None = None,
 ) -> Iterator[StepResult]:
     """Enhanced generation yielding StepResult with optional logprobs.
 
@@ -233,7 +234,10 @@ def generate_steps(
 
     # For penalties: track full history (not just prefilled tokens)
     generated = list(all_token_history or prompt_tokens)
+    generated_text = ""  # for logit_processor
     last_logits = model_logits[0, -1, :]
+    if logit_processor is not None:
+        last_logits = logit_processor(last_logits, generated_text)
     next_token = sample_next_token(
         last_logits,
         temperature=temperature,
@@ -263,11 +267,17 @@ def generate_steps(
 
         yield StepResult(token_id=token_id, logprob_result=logprob_result)
         generated.append(token_id)
+        if logit_processor is not None:
+            generated_text = tokenizer.decode(
+                generated[len(all_token_history or prompt_tokens) :]
+            )
 
         # Decode next token
         next_input = next_token.reshape(1, 1)
         model_logits = model(next_input, cache=cache)
         last_logits = model_logits[0, -1, :]
+        if logit_processor is not None:
+            last_logits = logit_processor(last_logits, generated_text)
         next_token = sample_next_token(
             last_logits,
             temperature=temperature,

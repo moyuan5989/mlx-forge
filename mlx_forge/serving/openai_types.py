@@ -40,6 +40,7 @@ class ChatMessage(BaseModel):
     role: str
     content: str | None = None
     tool_calls: list[ToolCallMessage] | None = None
+    thinking: str | None = None
 
 
 # --- Requests ---
@@ -73,11 +74,14 @@ class ChatCompletionRequest(BaseModel):
     # M42: context management
     num_ctx: int | None = None
     num_keep: int | None = None
+    # M43: thinking models
+    think: bool = False
 
 
 class CompletionRequest(BaseModel):
     model: str
     prompt: str
+    suffix: str | None = None
     temperature: float = 0.7
     top_p: float = 0.9
     max_tokens: int = 512
